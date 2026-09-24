@@ -1,7 +1,7 @@
 // routes/subjectRoutes.js
 const express = require("express");
 const router = express.Router();
-const SubjectController = require("../controllers/SubjectController");
+const SubjectController = require("../controllers/subjectController");
 const { verifyToken, verifyAdmin } = require("../middleware/auth");
 
 router.get("/", verifyToken, SubjectController.getSubjects);
