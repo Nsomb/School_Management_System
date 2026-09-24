@@ -1,7 +1,7 @@
 // backend/routes/markRoutes.js
 const express = require('express');
 const router = express.Router();
-const MarkController = require('../controllers/MarkController');
+const MarkController = require('../controllers/markController');
 const { verifyTeacher } = require('../middleware/auth');
 
 // ==================== TEACHER ROUTES ====================
