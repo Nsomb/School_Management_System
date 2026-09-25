@@ -1,7 +1,7 @@
 // adminIntegrationRoutes.js
 const express = require("express");
 const router = express.Router();
-const ReportCardService = require("../services/reportCardService");
+const ReportCardService = require("../services/ReportCardService");
 const MarkModel = require("../models/markModel");
 const { verifyAdmin } = require("../middleware/auth");
 
