@@ -1,7 +1,7 @@
 // controllers/TimetableConfigController.js
 const TimetableConfigModel = require('../models/TimetableConfigModel');
 const TeacherModel = require('../models/teacherModel');
-const SubjectModel = require('../models/SubjectModel');
+const SubjectModel = require('../models/subjectModel');
 const ClassListModel = require('../models/ClassListModel'); // Assuming you have this model for class validation
 
 const TimetableConfigController = {
