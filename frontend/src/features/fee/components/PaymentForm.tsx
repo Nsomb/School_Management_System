@@ -1,3 +1,4 @@
+// frontend/src/features/fee/components/PaymentForm.tsx
 import React, { useState } from 'react';
 import {
   Autocomplete,
@@ -13,10 +14,11 @@ import {
   MenuItem,
   Select,
   TextField,
-  Typography
+  Typography,
 } from '@mui/material';
 import { AttachMoney, Cancel, PersonSearch, Save } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
+import dayjs from 'dayjs';
 import { usePaymentForm } from '../hooks/useFeeForms';
 import type { Payment, Student, FeeStructure } from '../types/feeTypes';
 
@@ -27,12 +29,7 @@ interface PaymentFormProps {
 }
 
 const PaymentForm: React.FC<PaymentFormProps> = ({ initialData, onSuccess, onCancel }) => {
-  const {
-    formData,
-    setFormData,
-    handleChange,
-    validate
-  } = usePaymentForm(initialData);
+  const { formData, setFormData, handleChange, validate } = usePaymentForm(initialData);
 
   const [students] = useState<Student[]>([]);
   const [feeStructures] = useState<FeeStructure[]>([]);
@@ -52,9 +49,8 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ initialData, onSuccess, onCan
         student_id: student.id,
         student_name: student.name,
         class_id: student.class_id,
-        class_name: student.class_name
+        class_name: student.class_name,
       });
-      // Load fee structures for selected student's class
     }
   };
 
@@ -81,7 +77,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ initialData, onSuccess, onCan
                           <PersonSearch sx={{ mr: 1, color: 'action.active' }} />
                           {params.InputProps.startAdornment}
                         </>
-                      )
+                      ),
                     }}
                   />
                 )}
@@ -113,12 +109,12 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ initialData, onSuccess, onCan
                     <Select
                       value={selectedStructure?.id || ''}
                       onChange={(e) => {
-                        const structure = feeStructures.find(s => s.id === e.target.value);
+                        const structure = feeStructures.find((s) => s.id === e.target.value);
                         setSelectedStructure(structure || null);
                       }}
                       label="Select Fee Structure"
                     >
-                      {feeStructures.map(structure => (
+                      {feeStructures.map((structure) => (
                         <MenuItem key={structure.id} value={structure.id}>
                           {structure.academic_year} - {structure.term}
                         </MenuItem>
@@ -133,15 +129,17 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ initialData, onSuccess, onCan
                 <Grid item xs={12} sm={6}>
                   <DatePicker
                     label="Payment Date"
-                    value={formData.payment_date}
-                    onChange={(date) => setFormData(prev => ({
-                      ...prev,
-                      payment_date: date ? new Date(date).toISOString().split('T')[0] : ''
-                    }))}
+                    value={formData.payment_date ? dayjs(formData.payment_date) : null}
+                    onChange={(date) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        payment_date: date ? date.format('YYYY-MM-DD') : '',
+                      }))
+                    }
                     slotProps={{
                       textField: {
-                        fullWidth: true
-                      }
+                        fullWidth: true,
+                      },
                     }}
                   />
                 </Grid>
@@ -150,7 +148,9 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ initialData, onSuccess, onCan
                     <InputLabel>Payment Method</InputLabel>
                     <Select
                       value={formData.payment_method}
-                      onChange={(e) => handleChange(e as React.ChangeEvent<{ name?: string; value: unknown }>)}
+                      onChange={(e) =>
+                        handleChange(e as React.ChangeEvent<{ name?: string; value: unknown }>)
+                      }
                       name="payment_method"
                       label="Payment Method"
                     >
@@ -170,7 +170,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ initialData, onSuccess, onCan
                     value={formData.receipt_number}
                     onChange={handleChange}
                     InputProps={{
-                      startAdornment: <AttachMoney sx={{ mr: 1, color: 'action.active' }} />
+                      startAdornment: <AttachMoney sx={{ mr: 1, color: 'action.active' }} />,
                     }}
                   />
                 </Grid>
@@ -183,7 +183,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ initialData, onSuccess, onCan
                     value={formData.amount_paid}
                     onChange={handleChange}
                     InputProps={{
-                      startAdornment: <AttachMoney sx={{ mr: 1, color: 'action.active' }} />
+                      startAdornment: <AttachMoney sx={{ mr: 1, color: 'action.active' }} />,
                     }}
                   />
                 </Grid>
@@ -204,9 +204,11 @@ const PaymentForm: React.FC<PaymentFormProps> = ({ initialData, onSuccess, onCan
         </form>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onCancel} startIcon={<Cancel />}>Cancel</Button>
-        <Button 
-          onClick={handleSubmit} 
+        <Button onClick={onCancel} startIcon={<Cancel />}>
+          Cancel
+        </Button>
+        <Button
+          onClick={handleSubmit}
           startIcon={<Save />}
           variant="contained"
           disabled={!formData.student_id}

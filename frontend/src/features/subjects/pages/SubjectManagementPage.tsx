@@ -1,3 +1,4 @@
+// frontend/src/features/subjects/pages/SubjectManagementPage.tsx
 import { useState } from 'react';
 import {
   Button,
@@ -39,7 +40,7 @@ const SubjectManagementPage = () => {
 
   const [openForm, setOpenForm] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | number | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
 
   const [snackbar, setSnackbar] = useState<{
@@ -52,12 +53,11 @@ const SubjectManagementPage = () => {
     severity: 'success',
   });
 
-  // ------- FORM SUBMIT (create OR update) -------
   const handleSubmit = async (subjectData: SubjectCreateData) => {
     try {
       setSubmissionError(null);
       if (editingSubject) {
-        await updateSubject(editingSubject.id, subjectData);
+        await updateSubject(String(editingSubject.id), subjectData);
         setSnackbar({
           open: true,
           message: 'Subject updated successfully!',
@@ -86,11 +86,10 @@ const SubjectManagementPage = () => {
     }
   };
 
-  // ------- DELETE -------
   const handleDeleteSubject = async () => {
-    if (!confirmDelete) return;
+    if (confirmDelete === null || confirmDelete === undefined) return;
     try {
-      await removeSubject(confirmDelete);
+      await removeSubject(String(confirmDelete));
       setConfirmDelete(null);
       refetch();
       setSnackbar({
@@ -109,8 +108,7 @@ const SubjectManagementPage = () => {
     }
   };
 
-  const handleCloseSnackbar = () =>
-    setSnackbar((prev) => ({ ...prev, open: false }));
+  const handleCloseSnackbar = () => setSnackbar((prev) => ({ ...prev, open: false }));
 
   const handleOpenCreateForm = () => {
     setEditingSubject(null);
@@ -130,7 +128,6 @@ const SubjectManagementPage = () => {
     setSubmissionError(null);
   };
 
-  // ------- LOADING -------
   if (loading && !subjects.length && !openForm) {
     return (
       <Box display="flex" justifyContent="center" py={4}>
@@ -139,7 +136,6 @@ const SubjectManagementPage = () => {
     );
   }
 
-  // ------- ERROR -------
   if (error && !openForm) {
     return (
       <Box py={4}>
@@ -150,7 +146,6 @@ const SubjectManagementPage = () => {
     );
   }
 
-  // ------- FORM VIEW -------
   if (openForm) {
     return (
       <Box py={isSmallMobile ? 2 : 4} px={isSmallMobile ? 1 : 0}>
@@ -201,7 +196,6 @@ const SubjectManagementPage = () => {
     );
   }
 
-  // ------- LIST VIEW -------
   return (
     <Box py={isSmallMobile ? 2 : 4} px={isSmallMobile ? 1 : 0}>
       <Box
@@ -212,9 +206,7 @@ const SubjectManagementPage = () => {
         gap={isMobile ? 2 : 0}
         mb={4}
       >
-        <Typography variant={isSmallMobile ? 'h5' : 'h4'}>
-          Subject Management
-        </Typography>
+        <Typography variant={isSmallMobile ? 'h5' : 'h4'}>Subject Management</Typography>
 
         <Button
           variant="contained"
@@ -236,7 +228,7 @@ const SubjectManagementPage = () => {
       />
 
       <Dialog
-        open={!!confirmDelete}
+        open={confirmDelete !== null}
         onClose={() => setConfirmDelete(null)}
         fullScreen={isSmallMobile}
       >

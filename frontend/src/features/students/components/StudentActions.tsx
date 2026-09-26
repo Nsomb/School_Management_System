@@ -79,9 +79,7 @@ const StudentActions: React.FC<StudentActionsProps> = ({ faculties, classes, onC
     }
   };
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setEditedData((prev) => ({ ...prev, [name]: value }));
   };
@@ -103,7 +101,7 @@ const StudentActions: React.FC<StudentActionsProps> = ({ faculties, classes, onC
     <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 border border-blue-200 max-h-[90vh] md:max-h-none flex flex-col">
       <div className="flex items-center justify-between mb-4 sm:mb-6 shrink-0">
         <h2 className="text-lg sm:text-xl font-semibold text-blue-900">
-          View & Manage Students
+          View &amp; Manage Students
         </h2>
         <button
           onClick={onClose}
@@ -168,7 +166,7 @@ const StudentActions: React.FC<StudentActionsProps> = ({ faculties, classes, onC
                       <input
                         type="date"
                         name="date_of_birth"
-                        value={editedData.date_of_birth || student.date_of_birth}
+                        value={editedData.date_of_birth || student.date_of_birth || ''}
                         onChange={handleChange}
                         className="w-full mt-1 px-2 py-1 border border-blue-300 rounded text-sm bg-white"
                       />
@@ -181,7 +179,7 @@ const StudentActions: React.FC<StudentActionsProps> = ({ faculties, classes, onC
                     {editingStudent === student.id ? (
                       <select
                         name="sex"
-                        value={editedData.sex || student.sex}
+                        value={editedData.sex || student.sex || ''}
                         onChange={handleChange}
                         className="w-full mt-1 px-2 py-1 border border-blue-300 rounded text-sm bg-white"
                       >
@@ -202,7 +200,7 @@ const StudentActions: React.FC<StudentActionsProps> = ({ faculties, classes, onC
                     {editingStudent === student.id ? (
                       <select
                         name="faculty_id"
-                        value={editedData.faculty_id || student.faculty_id}
+                        value={editedData.faculty_id ?? student.faculty_id ?? ''}
                         onChange={handleChange}
                         className="w-full mt-1 px-2 py-1 border border-blue-300 rounded text-sm bg-white"
                       >
@@ -221,7 +219,7 @@ const StudentActions: React.FC<StudentActionsProps> = ({ faculties, classes, onC
                     {editingStudent === student.id ? (
                       <select
                         name="class_name"
-                        value={editedData.class_name || student.class_name}
+                        value={editedData.class_name || student.class_name || ''}
                         onChange={handleChange}
                         className="w-full mt-1 px-2 py-1 border border-blue-300 rounded text-sm bg-white"
                       >
@@ -340,7 +338,7 @@ const StudentActions: React.FC<StudentActionsProps> = ({ faculties, classes, onC
                         <input
                           type="date"
                           name="date_of_birth"
-                          value={editedData.date_of_birth || student.date_of_birth}
+                          value={editedData.date_of_birth || student.date_of_birth || ''}
                           onChange={handleChange}
                           className="w-full px-2 py-1 border border-blue-300 rounded text-sm"
                         />
@@ -352,7 +350,7 @@ const StudentActions: React.FC<StudentActionsProps> = ({ faculties, classes, onC
                       {editingStudent === student.id ? (
                         <select
                           name="sex"
-                          value={editedData.sex || student.sex}
+                          value={editedData.sex || student.sex || ''}
                           onChange={handleChange}
                           className="w-full px-2 py-1 border border-blue-300 rounded text-sm"
                         >
@@ -369,7 +367,7 @@ const StudentActions: React.FC<StudentActionsProps> = ({ faculties, classes, onC
                       {editingStudent === student.id ? (
                         <select
                           name="faculty_id"
-                          value={editedData.faculty_id || student.faculty_id}
+                          value={editedData.faculty_id ?? student.faculty_id ?? ''}
                           onChange={handleChange}
                           className="w-full px-2 py-1 border border-blue-300 rounded text-sm"
                         >
@@ -387,7 +385,7 @@ const StudentActions: React.FC<StudentActionsProps> = ({ faculties, classes, onC
                       {editingStudent === student.id ? (
                         <select
                           name="class_name"
-                          value={editedData.class_name || student.class_name}
+                          value={editedData.class_name || student.class_name || ''}
                           onChange={handleChange}
                           className="w-full px-2 py-1 border border-blue-300 rounded text-sm"
                         >

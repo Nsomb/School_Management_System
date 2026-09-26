@@ -1,6 +1,5 @@
 // frontend/src/features/fee/components/PaymentList.tsx
 import React, { useState, useEffect } from 'react';
-import { useFeeApi } from '../hooks/useFeeApi';
 import {
   Button,
   Paper,
@@ -25,8 +24,9 @@ import {
 } from '@mui/material';
 import { Edit, Delete, Search, Receipt as ReceiptIcon, Refresh } from '@mui/icons-material';
 import ReceiptViewer from './ReceiptViewer';
-import type { Payment } from '../types/feeTypes'; 
+import type { Payment } from '../types/feeTypes';
 import { formatDate, formatCurrency } from '../utils/feeHelpers';
+import { voidPayment } from '../api/feeService';
 
 interface PaymentListProps {
   payments: Payment[];
@@ -41,9 +41,13 @@ interface ReceiptData {
   receiptUrl: string;
 }
 
-const PaymentList: React.FC<PaymentListProps> = ({ payments, loading, error, onEdit, onRefresh }) => {
-  const { deletePayment, downloadReceipt } = useFeeApi();
-  
+const PaymentList: React.FC<PaymentListProps> = ({
+  payments,
+  loading,
+  error,
+  onEdit,
+  onRefresh,
+}) => {
   const [filteredPayments, setFilteredPayments] = useState<Payment[]>([]);
   const [studentFilter, setStudentFilter] = useState<string>('');
   const [yearFilter, setYearFilter] = useState<string>('');
@@ -51,28 +55,26 @@ const PaymentList: React.FC<PaymentListProps> = ({ payments, loading, error, onE
   const [paymentToDelete, setPaymentToDelete] = useState<number | null>(null);
   const [receiptViewerOpen, setReceiptViewerOpen] = useState<boolean>(false);
   const [currentReceipt, setCurrentReceipt] = useState<ReceiptData | null>(null);
+  const [deleting, setDeleting] = useState<boolean>(false);
 
-  // This useEffect now depends on the 'payments' prop, not on an internal fetch
   useEffect(() => {
     filterPayments(payments);
   }, [payments, studentFilter, yearFilter]);
 
   const filterPayments = (data: Payment[]) => {
     let filtered = [...data];
-    
+
     if (studentFilter) {
       const term = studentFilter.toLowerCase();
-      filtered = filtered.filter(payment => 
+      filtered = filtered.filter((payment) =>
         payment.student_name.toLowerCase().includes(term)
       );
     }
-    
+
     if (yearFilter) {
-      filtered = filtered.filter(payment => 
-        payment.payment_date.includes(yearFilter)
-      );
+      filtered = filtered.filter((payment) => payment.payment_date.includes(yearFilter));
     }
-    
+
     setFilteredPayments(filtered);
   };
 
@@ -82,16 +84,32 @@ const PaymentList: React.FC<PaymentListProps> = ({ payments, loading, error, onE
   };
 
   const confirmDeletePayment = async () => {
-    if (paymentToDelete) {
-      try {
-        await deletePayment(paymentToDelete);
-        onRefresh(); // Call the parent's refresh function
-      } catch (err) {
-        console.error('Failed to delete payment:', err);
-      }
+    if (!paymentToDelete) return;
+
+    const reason = window.prompt(
+      'Please provide a reason for voiding this payment (this will be logged):',
+      'Voided by admin'
+    );
+
+    if (reason === null) {
+      // User cancelled the prompt
+      setConfirmDelete(false);
+      setPaymentToDelete(null);
+      return;
     }
-    setConfirmDelete(false);
-    setPaymentToDelete(null);
+
+    setDeleting(true);
+    try {
+      await voidPayment(paymentToDelete, reason || 'Voided by admin');
+      onRefresh();
+    } catch (err) {
+      console.error('Failed to void payment:', err);
+      alert('Failed to void payment. Please try again.');
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(false);
+      setPaymentToDelete(null);
+    }
   };
 
   const viewReceipt = (paymentId: number, receiptUrl: string) => {
@@ -101,6 +119,8 @@ const PaymentList: React.FC<PaymentListProps> = ({ payments, loading, error, onE
 
   const handleDownloadReceipt = async (paymentId: number) => {
     try {
+      // Import dynamically to avoid circular dependencies
+      const { downloadReceipt } = await import('../api/feeService');
       const blob = await downloadReceipt(paymentId);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -115,19 +135,25 @@ const PaymentList: React.FC<PaymentListProps> = ({ payments, loading, error, onE
     }
   };
 
-  const getPaymentMethodColor = (method: string) => {
+  const getPaymentMethodColor = (
+    method: string
+  ): 'primary' | 'secondary' | 'success' | 'warning' | 'default' => {
     switch (method) {
-      case 'Cash': return 'primary';
-      case 'Bank Transfer': return 'secondary';
-      case 'Mobile Money': return 'success';
-      case 'Cheque': return 'warning';
-      default: return 'default';
+      case 'Cash':
+        return 'primary';
+      case 'Bank Transfer':
+        return 'secondary';
+      case 'Mobile Money':
+        return 'success';
+      case 'Cheque':
+        return 'warning';
+      default:
+        return 'default';
     }
   };
 
   return (
     <Paper elevation={3} sx={{ p: 3 }}>
-      {/* Search and filter inputs */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6}>
           <TextField
@@ -141,7 +167,7 @@ const PaymentList: React.FC<PaymentListProps> = ({ payments, loading, error, onE
                 <IconButton>
                   <Search />
                 </IconButton>
-              )
+              ),
             }}
           />
         </Grid>
@@ -204,15 +230,17 @@ const PaymentList: React.FC<PaymentListProps> = ({ payments, loading, error, onE
                   <TableCell>{formatDate(payment.payment_date)}</TableCell>
                   <TableCell align="right">{formatCurrency(payment.amount_paid)}</TableCell>
                   <TableCell>
-                    <Chip 
-                      label={payment.payment_method} 
-                      size="small" 
+                    <Chip
+                      label={payment.payment_method}
+                      size="small"
                       color={getPaymentMethodColor(payment.payment_method)}
                     />
                   </TableCell>
                   <TableCell>
                     <Tooltip title="View Receipt">
-                      <IconButton onClick={() => viewReceipt(payment.id, payment.receipt_path || '')}>
+                      <IconButton
+                        onClick={() => viewReceipt(payment.id, payment.receipt_path || '')}
+                      >
                         <ReceiptIcon color="primary" />
                       </IconButton>
                     </Tooltip>
@@ -239,18 +267,21 @@ const PaymentList: React.FC<PaymentListProps> = ({ payments, loading, error, onE
       </TableContainer>
 
       <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)}>
-        <DialogTitle>Confirm Delete</DialogTitle>
+        <DialogTitle>Confirm Void Payment</DialogTitle>
         <DialogContent>
-          Are you sure you want to delete this payment record? This action cannot be undone.
+          Are you sure you want to void this payment record? You will be asked to provide a
+          reason, and the action will be logged for auditing. This cannot be undone.
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmDelete(false)}>Cancel</Button>
-          <Button onClick={confirmDeletePayment} color="error" disabled={loading}>
-            Delete
+          <Button onClick={() => setConfirmDelete(false)} disabled={deleting}>
+            Cancel
+          </Button>
+          <Button onClick={confirmDeletePayment} color="error" disabled={deleting}>
+            {deleting ? 'Voiding...' : 'Void Payment'}
           </Button>
         </DialogActions>
       </Dialog>
-      
+
       {currentReceipt && (
         <ReceiptViewer
           open={receiptViewerOpen}

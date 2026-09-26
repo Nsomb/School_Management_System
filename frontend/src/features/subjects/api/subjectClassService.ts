@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Subject } from '../types';
+import type { Subject } from '../types/subjectTypes';
 import { authHeader } from '../api/authHeader';
 
 // Define the interfaces locally since they're not exported from types
