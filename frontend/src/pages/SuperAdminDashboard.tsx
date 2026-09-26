@@ -62,7 +62,7 @@ const emptyAdminForm = {
   role: 'admin' as 'admin' | 'bursar',
 };
 
-const API_BASE_URL = 'http://localhost:5000';
+
 
 export default function SuperAdminDashboard() {
   const [schools, setSchools] = useState<School[]>([]);
