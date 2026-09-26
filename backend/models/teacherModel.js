@@ -23,7 +23,7 @@ const encrypt = (text) => {
 
 const decrypt = (text) => {
   try {
-    if (!text.includes(':')) return text;
+    if (!text || !text.includes(':')) return text;
     const parts = text.split(':');
     const iv = Buffer.from(parts.shift(), 'hex');
     const encryptedText = parts.join(':');
@@ -39,19 +39,21 @@ const decrypt = (text) => {
 };
 
 const TeacherModel = {
-  // ─── CREATE (scoped by school) ────────────────────────────
+  // 🔑 Uses tenantQuery — sets app.current_school_id so RLS WITH CHECK passes
   create: async ({ username, password_hash, full_name, phone_number, plain_password, school_id }) => {
-    const encryptedPassword = encrypt(plain_password);
-    const result = await db.query(
-      `INSERT INTO teachers (username, password_hash, encrypted_password, full_name, phone_number, school_id)
+    const encryptedPassword = encrypt(plain_password || '');
+
+    const result = await db.tenantQuery(
+      `INSERT INTO teachers
+        (username, password_hash, encrypted_password, full_name, phone_number, school_id)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, username, full_name, phone_number, school_id, created_at`,
-      [username, password_hash, encryptedPassword, full_name, phone_number, school_id]
+      [username, password_hash, encryptedPassword, full_name, phone_number, school_id],
+      school_id
     );
     return result.rows[0];
   },
 
-  // ─── FIND (used during login — needs schoolId) ────────────
   findByUsername: async (username, schoolId) => {
     const result = await db.tenantQuery(
       `SELECT * FROM teachers WHERE username = $1 AND school_id = $2`,
@@ -70,7 +72,6 @@ const TeacherModel = {
     return result.rows[0];
   },
 
-  // ─── GET BY ID (scoped) ────────────────────────────────────
   getById: async (id, schoolId) => {
     const result = await db.tenantQuery(
       `SELECT t.id, t.username, t.full_name, t.phone_number, t.school_id, t.created_at, t.encrypted_password,
@@ -107,7 +108,6 @@ const TeacherModel = {
     return result.rows[0];
   },
 
-  // ─── GET ALL (scoped to school) ────────────────────────────
   getAll: async (schoolId) => {
     const result = await db.tenantQuery(
       `SELECT t.id, t.username, t.full_name, t.phone_number, t.school_id, t.created_at, t.encrypted_password,
@@ -133,13 +133,12 @@ const TeacherModel = {
       schoolId
     );
 
-    return result.rows.map(teacher => ({
+    return result.rows.map((teacher) => ({
       ...teacher,
       assignments: teacher.assignments || [],
     }));
   },
 
-  // ─── DELETE (scoped — cannot delete a teacher from another school) ──
   deleteByUsername: async (username, schoolId) => {
     const result = await db.tenantQuery(
       `DELETE FROM teachers WHERE username = $1 AND school_id = $2 RETURNING id`,
@@ -149,7 +148,6 @@ const TeacherModel = {
     return result.rowCount > 0;
   },
 
-  // ─── UPDATE (scoped) ───────────────────────────────────────
   update: async (id, updateData, schoolId) => {
     const allowedUpdates = ['full_name', 'phone_number', 'password_hash'];
     const fields = [];
@@ -178,7 +176,6 @@ const TeacherModel = {
     return result.rows[0] || null;
   },
 
-  // ─── PASSWORD ENCRYPTION HELPERS ──────────────────────────
   getDecryptedPassword: async (teacherId, schoolId) => {
     const result = await db.tenantQuery(
       `SELECT encrypted_password FROM teachers WHERE id = $1 AND school_id = $2`,
@@ -207,17 +204,6 @@ const TeacherModel = {
     return result.rows[0];
   },
 
-  // ─── ASSIGNMENTS (delegated to TeacherAssignmentModel, but helpers here) ──
-  checkAssignmentExists: async (teacherId, subjectId, classId, schoolId) => {
-    const result = await db.tenantQuery(
-      `SELECT id FROM teacher_assignments
-       WHERE teacher_id = $1 AND subject_id = $2 AND class_id = $3 AND school_id = $4`,
-      [teacherId, subjectId, classId, schoolId],
-      schoolId
-    );
-    return result.rows[0];
-  },
-
   getAssignedSubjects: async (teacherId, schoolId) => {
     const result = await db.tenantQuery(
       `SELECT ta.id as assignment_id, ta.subject_id, s.name AS subject_name,
@@ -228,24 +214,6 @@ const TeacherModel = {
        WHERE ta.teacher_id = $1 AND ta.school_id = $2
        ORDER BY s.name`,
       [teacherId, schoolId],
-      schoolId
-    );
-    return result.rows;
-  },
-
-  deleteAllAssignmentsForTeacher: async (teacherId, schoolId) => {
-    const result = await db.tenantQuery(
-      `DELETE FROM teacher_assignments WHERE teacher_id = $1 AND school_id = $2 RETURNING *`,
-      [teacherId, schoolId],
-      schoolId
-    );
-    return result.rows;
-  },
-
-  deleteAssignmentsByTeacherAndClass: async (teacherId, classId, schoolId) => {
-    const result = await db.tenantQuery(
-      `DELETE FROM teacher_assignments WHERE teacher_id = $1 AND class_id = $2 AND school_id = $3 RETURNING *`,
-      [teacherId, classId, schoolId],
       schoolId
     );
     return result.rows;

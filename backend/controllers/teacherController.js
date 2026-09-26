@@ -6,14 +6,21 @@ const jwt = require("jsonwebtoken");
 const db = require("../config/db");
 
 const TeacherController = {
-  // ─── CREATE ────────────────────────────────────────────────
   create: async (req, res) => {
     try {
       const { username, password, full_name, phone_number, class_id, subject_ids } = req.body;
       const schoolId = req.schoolId;
 
+      // 🔍 Debug log — remove once stable
+      console.log('[Teacher.create] req.schoolId =', schoolId, '| type =', typeof schoolId);
+      console.log('[Teacher.create] body =', JSON.stringify(req.body));
+
       if (!username || !password || !full_name) {
         return res.status(400).json({ error: "Username, password, and full name are required." });
+      }
+      if (!Number.isInteger(schoolId) || schoolId <= 0) {
+        console.error('[Teacher.create] Invalid schoolId on req:', schoolId);
+        return res.status(400).json({ error: "Invalid school context." });
       }
 
       const existingTeacher = await TeacherModel.findByUsernameOrEmail(username, schoolId);
@@ -51,11 +58,13 @@ const TeacherController = {
       });
     } catch (err) {
       console.error("Add teacher error:", err);
-      res.status(500).json({ error: "Server error occurred while adding teacher." });
+      res.status(500).json({
+        error: "Server error occurred while adding teacher.",
+        details: err.message,
+      });
     }
   },
 
-  // ─── GET ALL ───────────────────────────────────────────────
   getAll: async (req, res) => {
     try {
       const teachers = await TeacherModel.getAll(req.schoolId);
@@ -66,7 +75,6 @@ const TeacherController = {
     }
   },
 
-  // ─── DELETE ────────────────────────────────────────────────
   delete: async (req, res) => {
     try {
       const { username } = req.params;
@@ -82,7 +90,6 @@ const TeacherController = {
     }
   },
 
-  // ─── UPDATE ────────────────────────────────────────────────
   update: async (req, res) => {
     try {
       const { id } = req.params;
@@ -101,7 +108,6 @@ const TeacherController = {
       }
 
       let updatedTeacher = null;
-
       if (Object.keys(updateData).length > 0) {
         updatedTeacher = await TeacherModel.update(id, updateData, schoolId);
         if (!updatedTeacher) {
@@ -125,7 +131,7 @@ const TeacherController = {
 
       res.status(200).json({
         message: `Teacher ${id} updated successfully.`,
-        teacher: updatedTeacher || await TeacherModel.getById(id, schoolId),
+        teacher: updatedTeacher || (await TeacherModel.getById(id, schoolId)),
       });
     } catch (err) {
       console.error("Update teacher error:", err);
@@ -133,7 +139,6 @@ const TeacherController = {
     }
   },
 
-  // ─── GET PASSWORD (admin only) ────────────────────────────
   getTeacherPassword: async (req, res) => {
     try {
       const { id } = req.params;
@@ -149,7 +154,6 @@ const TeacherController = {
     }
   },
 
-  // ─── ASSIGN SUBJECTS ───────────────────────────────────────
   assignSubjectsToTeacher: async (req, res) => {
     try {
       const { id: teacherId } = req.params;
@@ -183,7 +187,6 @@ const TeacherController = {
     }
   },
 
-  // ─── GET ASSIGNED SUBJECTS ─────────────────────────────────
   getTeacherAssignedSubjects: async (req, res) => {
     try {
       const { id: teacherId } = req.params;
@@ -195,7 +198,6 @@ const TeacherController = {
     }
   },
 
-  // ─── LOGIN (accepts schoolId from body) ────────────────────
   login: async (req, res) => {
     try {
       const { username, password, schoolId } = req.body;
@@ -207,7 +209,6 @@ const TeacherController = {
         return res.status(400).json({ error: "School selection is required." });
       }
 
-      // Verify school exists and is active
       const schoolResult = await db.query(
         `SELECT id, name, is_active FROM schools WHERE id = $1`,
         [schoolId]
@@ -263,7 +264,6 @@ const TeacherController = {
     }
   },
 
-  // ─── UPDATE OWN PROFILE (teacher-scoped) ──────────────────
   updateProfile: async (req, res) => {
     try {
       const teacherIdToUpdate = req.teacher.teacherId;

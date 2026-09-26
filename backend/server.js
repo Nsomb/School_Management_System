@@ -11,27 +11,26 @@ process.on('uncaughtException', (err) => console.error('❌ UNCAUGHT:', err));
 process.on('unhandledRejection', (reason) => console.error('❌ UNHANDLED:', reason));
 
 // ==================== TRUST PROXY ====================
-// Render sits behind a reverse proxy — this lets Express see the real client IP
-// and correctly build URLs (important for rate limiting, logging, HTTPS redirects)
 app.set('trust proxy', 1);
 
-// ==================== MIDDLEWARE ====================
-// CORS: in production allow the frontend URL, in dev allow everything
+// ==================== CORS ====================
 const allowedOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim())
-  : true; // dev: allow all
+  : true;
 
-app.use(
-  cors({
-    origin: allowedOrigins,
-    credentials: true,
-  })
-);
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 
+// ==================== BODY PARSERS ====================
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request logging
+// ==================== SANITIZE REQUEST BODY ====================
+// 🔑 Converts "" → null, "1" → 1 for integer keys, etc.
+// This is the defensive layer that prevents type errors before
+// they reach Postgres. Runs on EVERY request.
+app.use(require('./middleware/sanitizeRequestBody'));
+
+// ==================== REQUEST LOGGING ====================
 app.use((req, res, next) => {
   console.log(`📥 ${req.method} ${req.url}`);
   next();
@@ -43,7 +42,6 @@ app.use('/assets', express.static(path.join(__dirname, 'assets')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ==================== HEALTH CHECK ====================
-// Render pings this endpoint to know the service is alive
 app.get('/', (req, res) =>
   res.json({
     status: 'ok',
@@ -52,7 +50,20 @@ app.get('/', (req, res) =>
   })
 );
 
-// ==================== SCHOOL ROUTES (PUBLIC + SUPER ADMIN) ====================
+// ==================== DEBUG: WHO AM I ====================
+// Hit this endpoint from the frontend while logged in to see what
+// the backend extracts from your JWT.
+const { verifyToken } = require('./middleware/auth');
+app.get('/api/debug/whoami', verifyToken, (req, res) => {
+  res.json({
+    user: req.user,
+    schoolId: req.schoolId,
+    schoolIdType: typeof req.schoolId,
+    schoolIdIsInteger: Number.isInteger(req.schoolId),
+  });
+});
+
+// ==================== SCHOOL ROUTES ====================
 const schoolRoutes = require('./routes/schoolRoutes');
 app.use('/api/schools', schoolRoutes);
 

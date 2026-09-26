@@ -3,12 +3,10 @@ const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
-// ─── Role groups ─────────────────────────────────────────────
 const ADMIN_ROLES   = ['admin', 'bursar', 'super_admin'];
 const STAFF_ROLES   = ['admin', 'bursar', 'teacher', 'super_admin'];
 const BURSAR_ROLES  = ['bursar', 'super_admin'];
 
-// ─── Helpers ─────────────────────────────────────────────────
 const unauthorized = (res, message = 'Unauthorized: No token provided.') =>
   res.status(401).json({ error: message });
 
@@ -16,11 +14,15 @@ const forbidden = (res, message = 'Forbidden.') =>
   res.status(403).json({ error: message });
 
 /**
- * Decode JWT and attach:
- *   req.user      — full user payload
- *   req.teacher   — same, with teacherId (if role = teacher)
- *   req.schoolId  — TOP-LEVEL access for controllers
+ * Force schoolId to be a strict positive integer or null.
+ * Empty strings, NaN strings, and zero all become null.
  */
+function coerceSchoolId(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization;
 
@@ -37,7 +39,7 @@ function verifyToken(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const schoolId = decoded.schoolId ?? null;
+    const schoolId = coerceSchoolId(decoded.schoolId);
 
     const userPayload = {
       id: decoded.userId || decoded.teacherId || decoded.id,
@@ -57,7 +59,7 @@ function verifyToken(req, res, next) {
       };
     }
 
-    // ⚡ THE KEY LINE — every controller reads req.schoolId
+    // 🔑 The line that every controller reads
     req.schoolId = schoolId;
 
     return next();
@@ -123,10 +125,6 @@ function verifyStaff(req, res, next) {
   });
 }
 
-/**
- * Bursar-only (used by feeRoutes.js).
- * Must be chained AFTER verifyAdmin — verifyAdmin sets req.user.
- */
 function requireBursar(req, res, next) {
   if (!req.user || !BURSAR_ROLES.includes(req.user.role)) {
     return forbidden(res, 'Forbidden: Bursar access required.');
