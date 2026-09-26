@@ -31,14 +31,14 @@ const PAGE = {
 // ─── Term 1 / Term 2 columns (9 total = 535) ───
 // Competency columns absorb the width freed up from the number columns.
 const TERM_COLUMNS = {
-  subject: 90,
+  subject: 94,
   eval1: 15,
-  competency1: 160,
+  competency1: 162,
   eval2: 15,
   competency2: 160,
-  average: 20,
-  coefficient: 15,
-  total: 25,
+  average: 18,
+  coefficient: 16,
+  total: 20,
   remark: 35,
   get totalWidth() {
     return this.subject + this.eval1 + this.competency1 + this.eval2 +
@@ -49,14 +49,14 @@ const TERM_COLUMNS = {
 // ─── Term 3 / Final columns (10 total = 535) ───
 // Competency columns absorb the width freed up from the number columns.
 const FINAL_COLUMNS = {
-  subject: 78,
+  subject: 82,
   eval1: 15,
-  competency1: 152,
+  competency1: 154,
   eval2: 15,
   competency2: 152,
-  average: 20,
-  coefficient: 15,
-  total: 25,
+  average: 18,
+  coefficient: 16,
+  total: 20,
   annualAvg: 28,
   remark: 35,
   get totalWidth() {
