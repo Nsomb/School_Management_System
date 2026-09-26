@@ -37,8 +37,12 @@ const isTokenExpired = (token: string): boolean => {
   return decoded.exp < Math.floor(Date.now() / 1000);
 };
 
-const apiClient = axios.create({ baseURL: API_BASE_URL, timeout: 15000 });
+// ─── Axios client ────────────────────────────────────────────
+// timeout is 60s to accommodate Render free-tier cold starts
+// (backend sleeps after 15 min idle; first request wakes it up)
+const apiClient = axios.create({ baseURL: API_BASE_URL, timeout: 60000 });
 
+// ─── Request interceptor: attach JWT ─────────────────────────
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('authToken');
   if (token && !isTokenExpired(token)) {
@@ -49,24 +53,67 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Endpoints where a 401 means "wrong credentials", not "your session expired".
-// The global auto-logout/redirect below must NOT fire for these — there is
-// no session to log out of yet, the user is still on the login form.
+// Endpoints where a 401 means "wrong credentials", not "session expired".
+// The global auto-logout below must NOT fire for these.
 const LOGIN_ENDPOINTS = ['/admin/login', '/api/teachers/login'];
 
+// ─── Response interceptor: graceful network error handling ───
 apiClient.interceptors.response.use(
-  (r) => r,
+  (response) => response,
   (error) => {
+    // ─── Case 1: No response received (network/offline/timeout) ───
+    if (!error.response && error.request) {
+      const isOffline =
+        typeof navigator !== 'undefined' && navigator.onLine === false;
+
+      const isTimeout =
+        error.code === 'ECONNABORTED' ||
+        (error.message && error.message.toLowerCase().includes('timeout'));
+
+      let message: string;
+      if (isOffline) {
+        message = 'You appear to be offline. Please check your internet connection.';
+      } else if (isTimeout) {
+        message =
+          'The server is taking longer than usual to respond. It may be waking up from sleep — please wait a moment and try again.';
+      } else {
+        message = 'Unable to reach the server. Please check your connection and try again.';
+      }
+
+      const customError: any = new Error(message);
+      customError.isNetworkError = true;
+      customError.isOffline = isOffline;
+      customError.isTimeout = isTimeout;
+      customError.originalError = error;
+      return Promise.reject(customError);
+    }
+
+    // ─── Case 2: 401 Unauthorized (session expired) ───
     const requestUrl: string = error.config?.url || '';
-    const isLoginRequest = LOGIN_ENDPOINTS.some((endpoint) => requestUrl.includes(endpoint));
+    const isLoginRequest = LOGIN_ENDPOINTS.some((endpoint) =>
+      requestUrl.includes(endpoint)
+    );
 
     if (error.response?.status === 401 && !isLoginRequest) {
       logout();
+      return Promise.reject(error);
     }
+
+    // ─── Case 3: 5xx server errors ───
+    if (error.response?.status >= 500) {
+      const customError: any = new Error(
+        'The server encountered an error. Please try again shortly.'
+      );
+      customError.isServerError = true;
+      customError.originalError = error;
+      return Promise.reject(customError);
+    }
+
     return Promise.reject(error);
   }
 );
 
+// ─── Login ───────────────────────────────────────────────────
 export const login = async (
   credentials: { username: string; password: string; schoolId: number | null },
   role: 'admin' | 'teacher' | 'super_admin'
@@ -74,7 +121,7 @@ export const login = async (
   try {
     let endpoint = '/admin/login';
     if (role === 'teacher') endpoint = '/api/teachers/login';
-    if (role === 'super_admin') endpoint = '/admin/login'; // same endpoint, backend differentiates
+    if (role === 'super_admin') endpoint = '/admin/login';
 
     const response = await apiClient.post(endpoint, credentials);
 
@@ -100,16 +147,23 @@ export const login = async (
     return { accessToken, userDetails };
   } catch (error: any) {
     clearAuthData();
-    const msg = error.response?.data?.error || error.response?.data?.message || error.message || 'Login failed';
+    // Prefer our custom clean message; fall back to server message
+    const msg =
+      error.response?.data?.error ||
+      error.response?.data?.message ||
+      error.message ||
+      'Login failed';
     throw new Error(msg);
   }
 };
 
+// ─── Logout ──────────────────────────────────────────────────
 export const logout = (): void => {
   clearAuthData();
   if (typeof window !== 'undefined') window.location.href = '/select-school';
 };
 
+// ─── Initialize auth from localStorage ──────────────────────
 export const initializeAuth = () => {
   const token = localStorage.getItem('authToken');
   const role = localStorage.getItem('role') as UserDetails['role'] | null;
@@ -121,7 +175,11 @@ export const initializeAuth = () => {
   }
 
   let user: UserDetails | null = null;
-  try { user = userStr ? JSON.parse(userStr) : null; } catch { clearAuthData(); }
+  try {
+    user = userStr ? JSON.parse(userStr) : null;
+  } catch {
+    clearAuthData();
+  }
   return { token, role, user };
 };
 
@@ -135,7 +193,12 @@ export const getAuthToken = (): string | null => {
   return token && !isTokenExpired(token) ? token : null;
 };
 
-const storeAuthData = (accessToken: string, role: string, userDetails: UserDetails): void => {
+// ─── Storage helpers ─────────────────────────────────────────
+const storeAuthData = (
+  accessToken: string,
+  role: string,
+  userDetails: UserDetails
+): void => {
   localStorage.setItem('authToken', accessToken);
   localStorage.setItem('role', role);
   localStorage.setItem('user', JSON.stringify(userDetails));

@@ -12,7 +12,7 @@ export const BRANDING = {
 
   // ─── Colors ────────────────────────────────────────────────
   brandColor: '#1e40af',       // Primary deep blue
-  brandAccent: '#3b82f6',      // Lighter blue (gradient end)
+  brandAccent:  '#1BA3A3',      // Lighter blue (gradient end)
 
   // ─── Contact ───────────────────────────────────────────────
   contactEmail: 'briannsom162@gmail.com',

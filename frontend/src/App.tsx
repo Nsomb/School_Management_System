@@ -5,6 +5,9 @@ import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import type { User } from './types/userTypes';
 
+// ─── NETWORK STATUS (offline banner) ────────────────────────────
+import NetworkStatusBanner from './components/common/NetworkStatusBanner';
+
 // ─── PUBLIC PAGES ───────────────────────────────────────────────
 import SchoolSelectionPage from './pages/SchoolSelectionPage';
 import LoginPage from './pages/LoginPage';
@@ -16,7 +19,7 @@ import UnauthorizedPage from './pages/UnauthorizedPage';
 import AdminDashboardPage from './pages/AdminDashboard';
 import TeacherDashboardPage from './pages/TeacherDashboard';
 
-// ─── ACADEMIC SETUP (NEW) ──────────────────────────────────────
+// ─── ACADEMIC SETUP ────────────────────────────────────────────
 import AcademicSetupPage from './features/academic/pages/AcademicSetupPage';
 
 // ─── STUDENTS ───────────────────────────────────────────────────
@@ -91,6 +94,9 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        {/* ⬇️ Offline / online banner — sits above everything */}
+        <NetworkStatusBanner />
+
         <LocalizationProvider dateAdapter={AdapterDayjs}>
           <Routes>
             {/* ═══════════ PUBLIC ROUTES ═══════════ */}

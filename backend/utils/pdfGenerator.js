@@ -28,7 +28,7 @@ const PAGE = {
   get contentWidth() { return this.width - this.leftMargin - this.rightMargin; }, // 535
 };
 
-// ─── Term 1 / Term 2 columns (9 total, sums to 535) ───
+// ─── Term 1 / Term 2 columns (9 total = 535) ───
 const TERM_COLUMNS = {
   subject: 90,
   eval1: 28,
@@ -45,18 +45,19 @@ const TERM_COLUMNS = {
   },
 };
 
-// ─── Term 3 / Final Year columns (10 total, sums to 535) ───
+// ─── Term 3 / Final columns (10 total = 535) ───
+// ✅ Competency widths preserved at 118 each (was shrinking to 95)
 const FINAL_COLUMNS = {
-  subject: 85,
+  subject: 78,
   eval1: 22,
-  competency1: 95,
+  competency1: 118,
   eval2: 22,
-  competency2: 95,
-  average: 30,
-  coefficient: 24,
-  total: 30,
-  annualAvg: 45,
-  remark: 87,
+  competency2: 118,
+  average: 26,
+  coefficient: 22,
+  total: 28,
+  annualAvg: 28,
+  remark: 73,
   get totalWidth() {
     return this.subject + this.eval1 + this.competency1 + this.eval2 +
       this.competency2 + this.average + this.coefficient +
@@ -456,7 +457,7 @@ function generateReportCardPDF(doc, data, isFinalYear = false, school = {}) {
   const totalTableWidth = colWidths.reduce((a, b) => a + b, 0);
   const headerHeight = SUBJECT_TABLE_HEADER_HEIGHT;
 
-  const footerReserve = 200;
+  const footerReserve = 210;
   const bottomLimit = PAGE.height - PAGE.bottomMargin;
   const availableForTable = bottomLimit - footerReserve - tableTop - headerHeight;
   const subjectCount = Math.max(subjects.length, 1);
@@ -577,51 +578,80 @@ function generateReportCardPDF(doc, data, isFinalYear = false, school = {}) {
     }
   });
 
-  // ═══════════ SUMMARY PANELS — Decision INSIDE Student Performance ═══════════
-  const boxY = Math.min(rowY + 6, PAGE.height - PAGE.bottomMargin - 165);
+  // ═══════════ SUMMARY PANELS ═══════════
+  const boxY = Math.min(rowY + 6, PAGE.height - PAGE.bottomMargin - 175);
   const panelWidth = (PAGE.contentWidth - 10) / 2;
   const gap = 10;
 
-  const decisionText = isFinalYear || termType === '3'
-    ? (parseFloat(summary.cumulativeAverage || summary.termAverage) >= 10 ? 'Promoted' : 'Repeated')
-    : getCouncilDecision(parseFloat(summary.termAverage));
-
   const hasAnnual = summary.annualAverage !== null && summary.annualAverage !== undefined;
 
-  const studentRows = [
-    { label: 'Term Avg', value: `${summary.termAverage} / 20` },
-    { label: 'Term Rank', value: `${getOrdinalSuffix(summary.rank)} / ${summary.studentsInClass}` },
-  ];
+  // ─── STUDENT PERFORMANCE ROWS ───
+  // Term 1/2: Average, Rank, Weighted Score, Decision
+  // Term 3/Final: Term Avg, Term Rank, Annual Avg, Annual Rank, Decision
+  const studentRows = [];
 
-  if (hasAnnual) {
+  if (showAnnualColumn) {
+    // Term 3 / Final layout
     studentRows.push(
-      { label: 'Annual Avg', value: `${summary.annualAverage} / 20`, highlight: true },
+      { label: 'Term Avg', value: `${summary.termAverage} / 20` },
+      { label: 'Term Rank', value: `${getOrdinalSuffix(summary.rank)} / ${summary.studentsInClass}` },
+      {
+        label: 'Annual Avg',
+        value: hasAnnual ? `${summary.annualAverage} / 20` : '—',
+        highlight: true,
+      },
       {
         label: 'Annual Rank',
         value: summary.annualRank ? `${getOrdinalSuffix(summary.annualRank)} / ${summary.studentsInClass}` : '—',
         highlight: true,
       }
     );
+  } else {
+    // Term 1 / Term 2 layout
+    studentRows.push(
+      { label: 'Average', value: `${summary.termAverage} / 20` },
+      { label: 'Rank', value: `${getOrdinalSuffix(summary.rank)} / ${summary.studentsInClass}` },
+      {
+        label: 'Weighted Score',
+        value: `${summary.totalScore} (Coef ${summary.totalCoeff})`,
+      }
+    );
   }
+
+  const decisionText = showAnnualColumn
+    ? (parseFloat(summary.cumulativeAverage || summary.annualAverage || summary.termAverage) >= 10
+        ? 'Promoted'
+        : 'Repeated')
+    : getCouncilDecision(parseFloat(summary.termAverage));
 
   studentRows.push({ label: 'Decision', value: decisionText, isDecision: true });
 
-  const classRows = [
-    { label: 'Term Class Avg', value: `${summary.classAverage} / 20` },
-    {
-      label: 'Annual Class Avg',
-      value: summary.annualClassAverage != null ? `${summary.annualClassAverage} / 20` : '—',
-      highlight: true,
-    },
-    {
-      label: 'Highest Annual',
-      value: summary.highestAnnualAverage != null
-        ? `${summary.highestAnnualAverage} / 20`
-        : `${summary.highestAverage} / 20`,
-      highlight: true,
-    },
-    { label: 'Total Students', value: String(summary.studentsInClass) },
-  ];
+  // ─── CLASS PERFORMANCE ROWS ───
+  // Term 1/2: Class Average, Highest, Lowest, Total Students
+  // Term 3/Final: Term Class Avg, Annual Class Avg, Highest Annual, Total Students
+  const classRows = showAnnualColumn
+    ? [
+        { label: 'Term Class Avg', value: `${summary.classAverage} / 20` },
+        {
+          label: 'Annual Class Avg',
+          value: summary.annualClassAverage != null ? `${summary.annualClassAverage} / 20` : '—',
+          highlight: true,
+        },
+        {
+          label: 'Highest Annual',
+          value: summary.highestAnnualAverage != null
+            ? `${summary.highestAnnualAverage} / 20`
+            : `${summary.highestAverage} / 20`,
+          highlight: true,
+        },
+        { label: 'Total Students', value: String(summary.studentsInClass) },
+      ]
+    : [
+        { label: 'Class Average', value: `${summary.classAverage} / 20` },
+        { label: 'Highest Average', value: `${summary.highestAverage} / 20` },
+        { label: 'Lowest Average', value: `${summary.lowestAverage} / 20` },
+        { label: 'Total Students', value: String(summary.studentsInClass) },
+      ];
 
   const afterStudentTable = drawStatTable(doc, startX, boxY, panelWidth, 'STUDENT PERFORMANCE', studentRows);
   const rightPanelX = startX + panelWidth + gap;
