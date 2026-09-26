@@ -1,9 +1,9 @@
 // src/hooks/useNetworkStatus.ts
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 export interface NetworkStatus {
   isOnline: boolean;
-  wasOffline: boolean; // true for ~4s after reconnecting — used to show "back online" banner
+  wasOffline: boolean;
 }
 
 export const useNetworkStatus = (): NetworkStatus => {
@@ -11,19 +11,22 @@ export const useNetworkStatus = (): NetworkStatus => {
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
   const [wasOffline, setWasOffline] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
       setWasOffline(true);
-      // Show "Back online" for 4 seconds, then hide banner
-      const timer = setTimeout(() => setWasOffline(false), 4000);
-      return () => clearTimeout(timer);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        setWasOffline(false);
+      }, 4000);
     };
 
     const handleOffline = () => {
       setIsOnline(false);
       setWasOffline(false);
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
 
     window.addEventListener('online', handleOnline);
@@ -32,6 +35,7 @@ export const useNetworkStatus = (): NetworkStatus => {
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, []);
 
