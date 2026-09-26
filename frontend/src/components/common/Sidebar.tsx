@@ -17,7 +17,6 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
-// Same color as the header
 const SIDEBAR_BG = '#1e40af';
 
 const BURSAR_ITEMS = [
@@ -32,25 +31,27 @@ const BURSAR_ITEMS = [
   { name: 'Student Statement', icon: FileText, path: '/admin/fees/student-statement' },
 ];
 
+// ─── ADMIN — new order: Dashboard → Academics → Classes → Subjects →
+//     Teachers → Students → Attendance → Report Card → Questions → SMS
 const ADMIN_ITEMS = [
-  { name: 'Dashboard', icon: LayoutDashboard, path: '/admin' },
-  { name: 'Academic Setup', icon: Settings, path: '/admin/academic-setup' },
-  { name: 'Teachers', icon: Users, path: '/admin/teachers' },
-  { name: 'Students', icon: GraduationCap, path: '/admin/students' },
-  { name: 'Subjects', icon: BookOpen, path: '/admin/subjects' },
-  { name: 'Classes', icon: ListTree, path: '/admin/classes' },
-  { name: 'Attendance', icon: CalendarCheck, path: '/admin/attendance' },
-  { name: 'Report Card', icon: ClipboardList, path: '/admin/report-card' },
-  { name: 'SMS', icon: MessageSquare, path: '/admin/sms' },
-  { name: 'Questions', icon: ClipboardCheck, path: '/admin/questions' },
+  { name: 'Dashboard',      icon: LayoutDashboard, path: '/admin' },
+  { name: 'Academic Setup', icon: Settings,        path: '/admin/academic-setup' },
+  { name: 'Classes',        icon: ListTree,        path: '/admin/classes' },
+  { name: 'Subjects',       icon: BookOpen,        path: '/admin/subjects' },
+  { name: 'Teachers',       icon: Users,           path: '/admin/teachers' },
+  { name: 'Students',       icon: GraduationCap,   path: '/admin/students' },
+  { name: 'Attendance',     icon: CalendarCheck,   path: '/admin/attendance' },
+  { name: 'Report Card',    icon: ClipboardList,   path: '/admin/report-card' },
+  { name: 'Questions',      icon: ClipboardCheck,  path: '/admin/questions' },
+  { name: 'SMS',            icon: MessageSquare,   path: '/admin/sms' },
 ];
 
 const TEACHER_ITEMS = [
-  { name: 'Dashboard', icon: LayoutDashboard, path: '/teacher' },
-  { name: 'Marks', icon: ClipboardList, path: '/teacher/marks' },
-  { name: 'Attendance', icon: CalendarCheck, path: '/teacher/attendance' },
-  { name: 'Questions', icon: ClipboardCheck, path: '/teacher/questions' },
-  { name: 'Statistics', icon: BarChart3, path: '/teacher/statistics' },
+  { name: 'Dashboard',  icon: LayoutDashboard, path: '/teacher' },
+  { name: 'Marks',      icon: ClipboardList,   path: '/teacher/marks' },
+  { name: 'Attendance', icon: CalendarCheck,   path: '/teacher/attendance' },
+  { name: 'Questions',  icon: ClipboardCheck,  path: '/teacher/questions' },
+  { name: 'Statistics', icon: BarChart3,       path: '/teacher/statistics' },
 ];
 
 const Sidebar = ({ onClose }: SidebarProps) => {
@@ -77,7 +78,14 @@ const Sidebar = ({ onClose }: SidebarProps) => {
       }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
           {schoolProfile?.logo_url ? (
-            <Avatar src={schoolProfile.logo_url} alt="" sx={{ width: 32, height: 32, bgcolor: '#fff', p: 0.25 }} />
+            <Avatar
+              src={schoolProfile.logo_url}
+              alt=""
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              sx={{ width: 32, height: 32, bgcolor: '#fff', p: 0.25 }}
+            >
+              {schoolProfile?.name?.charAt(0).toUpperCase() || 'S'}
+            </Avatar>
           ) : role === 'super_admin' ? (
             <Avatar sx={{ width: 32, height: 32, bgcolor: 'rgba(255,255,255,0.2)', fontSize: 13, fontWeight: 700 }}>PA</Avatar>
           ) : schoolProfile?.name ? (
@@ -123,7 +131,10 @@ const Sidebar = ({ onClose }: SidebarProps) => {
                 <ListItemIcon sx={{ minWidth: 36, color: 'inherit' }}>
                   <Icon size={20} />
                 </ListItemIcon>
-                <ListItemText primary={item.name} primaryTypographyProps={{ fontSize: 14, fontWeight: 500, noWrap: true }} />
+                <ListItemText
+                  primary={item.name}
+                  primaryTypographyProps={{ fontSize: 14, fontWeight: 500, noWrap: true }}
+                />
               </ListItemButton>
             );
           })}
