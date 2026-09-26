@@ -7,12 +7,14 @@ const { getSchoolConfig } = require('./schoolConfigCache');
 
 const RECEIPTS_BASE = path.join(__dirname, '..', 'receipts');
 
-// Country-level constants (hardcoded)
-const COUNTRY = {
-  nameEn: 'REPUBLIC OF CAMEROON',
-  mottoEn: 'Peace – Work – Fatherland',
-  defaultMinistryEn: 'MINISTRY OF SECONDARY EDUCATION',
-};
+// ─── Resolve the school logo path on disk ───
+// Handles both "/uploads/schools/logo.png" and "uploads/schools/logo.png"
+function resolveLogoPath(logoUrl) {
+  if (!logoUrl) return null;
+  const cleanUrl = logoUrl.startsWith('/') ? logoUrl.slice(1) : logoUrl;
+  const absolute = path.join(__dirname, '..', cleanUrl);
+  return fs.existsSync(absolute) ? absolute : null;
+}
 
 function ensureDirectory(schoolId, academicYear, term) {
   const year = academicYear.split(/[-\/]/)[0];
@@ -22,7 +24,19 @@ function ensureDirectory(schoolId, academicYear, term) {
   return dir;
 }
 
-async function getComponentSummary(studentId, feesStructureId, schoolId, queryRunner = db) {
+/**
+ * Fetch per-component paid totals for a student's fee structure.
+ *
+ * RLS CONTEXT IS CRITICAL:
+ *   - When called during payment creation, we pass a transaction `client`
+ *     that already has `app.current_school_id` set via set_config().
+ *   - When called during a receipt RE-download, we have no transaction;
+ *     we must use `db.tenantQuery()` which sets the RLS context.
+ *
+ * Without the RLS context, this query silently returns 0 rows and the
+ * receipt shows 0.00 paid across all components.
+ */
+async function getComponentSummary(studentId, feesStructureId, schoolId, queryRunner = null) {
   const query = `
     SELECT COALESCE(component_name, 'General') AS component_name,
            SUM(amount_paid) AS total_paid
@@ -30,30 +44,37 @@ async function getComponentSummary(studentId, feesStructureId, schoolId, queryRu
     WHERE student_id = $1 AND fee_structure_id = $2 AND status = 'active' AND school_id = $3
     GROUP BY component_name
   `;
-  const result = await queryRunner.query(query, [studentId, feesStructureId, schoolId]);
+  const params = [studentId, feesStructureId, schoolId];
+
+  const result = queryRunner
+    ? await queryRunner.query(query, params)
+    : await db.tenantQuery(query, params, schoolId);
+
   return result.rows;
 }
 
 async function generateReceipt(details, receiptNumber, client = null) {
   const {
-    student_id, fee_structure_id, academic_year, term,
+    student_id, fee_structure_id, academic_year,
     student_name, class_name, components, amount_paid,
     payment_method, reference_number, payment_date,
     recorded_by_admin_username, notes, component_name: paid_component_name,
     school_id,
   } = details;
 
+  // Defensive term resolution (accept both `term` and legacy `fee_term`)
+  const term = details.term || details.fee_term || 'Term';
+
   const school = await getSchoolConfig(school_id);
   const SCHOOL_NAME = school?.name || 'SCHOOL NAME';
+  const SCHOOL_MOTTO = school?.motto_french || school?.motto || '';
   const SCHOOL_ADDRESS = school?.address || '';
   const SCHOOL_PHONE = school?.phone || '';
   const SCHOOL_EMAIL = school?.email || '';
-  const SCHOOL_MOTTO = school?.motto_french || school?.motto || '';
-  const SCHOOL_REGION = school?.region || '';
-  const SCHOOL_DIVISION = school?.division || '';
+  const LOGO_PATH = resolveLogoPath(school?.logo_url);
 
   const currentPaid = parseFloat(amount_paid) || 0;
-  const queryRunner = client || db;
+  const queryRunner = client || null;
 
   const compSummary = await getComponentSummary(student_id, fee_structure_id, school_id, queryRunner);
   const compMap = {};
@@ -70,40 +91,46 @@ async function generateReceipt(details, receiptNumber, client = null) {
     const stream = fs.createWriteStream(filePath);
     doc.pipe(stream);
 
-    // ═══════════════════════════════════════════════════════
-    // HEADER — country name + motto + ministry + school name
-    // ═══════════════════════════════════════════════════════
-    doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000')
-      .text(COUNTRY.nameEn, { align: 'center' });
-    doc.fontSize(8).font('Helvetica-BoldOblique').fillColor('#000000')
-      .text(COUNTRY.mottoEn, { align: 'center' });
-    doc.fontSize(8).font('Helvetica-Bold').fillColor('#000000')
-      .text(COUNTRY.defaultMinistryEn, { align: 'center' });
-    if (SCHOOL_REGION) {
-      doc.fontSize(8).font('Helvetica-Bold').fillColor('#000000')
-        .text(`REGIONAL DELEGATION OF ${SCHOOL_REGION.toUpperCase()}`, { align: 'center' });
-    }
-    if (SCHOOL_DIVISION) {
-      doc.fontSize(8).font('Helvetica-Bold').fillColor('#000000')
-        .text(`DIVISIONAL DELEGATION OF ${SCHOOL_DIVISION.toUpperCase()}`, { align: 'center' });
-    }
-    doc.moveDown(0.3);
+    // ═══════════════════════════════════════════════════════════
+    // HEADER — logo + school name + motto + contact
+    // (country / ministry / delegation lines removed)
+    // ═══════════════════════════════════════════════════════════
 
+    // ─── School logo (small, centered, at the top) ───
+    const LOGO_SIZE = 42;
+    const pageCenterX = 30 + (595 - 60) / 2; // 30 margin on each side → content width 535
+    const logoX = pageCenterX - LOGO_SIZE / 2;
+    const logoY = doc.y;
+
+    if (LOGO_PATH) {
+      try {
+        doc.image(LOGO_PATH, logoX, logoY, { width: LOGO_SIZE, height: LOGO_SIZE });
+        doc.y = logoY + LOGO_SIZE + 6; // reserve the vertical space
+      } catch (e) {
+        // If the image can't be embedded, just skip it and keep flowing
+      }
+    }
+
+    // ─── School name ───
     doc.fontSize(14).font('Helvetica-Bold').fillColor('#000000')
       .text(SCHOOL_NAME, { align: 'center' });
 
+    // ─── School motto (green, italic) ───
     if (SCHOOL_MOTTO) {
       doc.fontSize(8).font('Helvetica-BoldOblique').fillColor('#2e7d32')
         .text(SCHOOL_MOTTO, { align: 'center' });
     }
 
+    // ─── Contact line ───
     const contactLine = [SCHOOL_ADDRESS, SCHOOL_PHONE, SCHOOL_EMAIL].filter(Boolean).join(' • ');
     if (contactLine) {
       doc.fontSize(7).font('Helvetica').fillColor('#555555')
         .text(contactLine, { align: 'center' });
     }
+
     doc.moveDown(0.5);
 
+    // ─── Receipt title ───
     doc.fontSize(12).font('Helvetica-Bold').fillColor('#1a4b8c')
       .text('FEE PAYMENT RECEIPT', { align: 'center' });
     doc.fontSize(8).font('Helvetica').fillColor('#000000')
@@ -166,10 +193,12 @@ async function generateReceipt(details, receiptNumber, client = null) {
     const totalCompOutstanding = totalCompExpected - totalCompPaid;
     doc.moveDown(0.5);
     const rowY = doc.y;
+    doc.font('Helvetica-Bold');
     doc.text('TOTAL', colPositions[0], rowY);
     doc.text(totalCompExpected.toFixed(2), colPositions[1], rowY, { width: colWidths[1], align: 'right' });
     doc.text(totalCompPaid.toFixed(2), colPositions[2], rowY, { width: colWidths[2], align: 'right' });
     doc.text(totalCompOutstanding.toFixed(2), colPositions[3], rowY, { width: colWidths[3], align: 'right' });
+    doc.font('Helvetica');
     doc.moveDown(1);
 
     // ─── Payment Details ───
