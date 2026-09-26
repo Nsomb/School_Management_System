@@ -29,16 +29,17 @@ const PAGE = {
 };
 
 // ─── Term 1 / Term 2 columns (9 total = 535) ───
+// Competency columns absorb the width freed up from the number columns.
 const TERM_COLUMNS = {
   subject: 90,
-  eval1: 28,
-  competency1: 120,
-  eval2: 28,
-  competency2: 120,
-  average: 30,
-  coefficient: 26,
-  total: 33,
-  remark: 60,
+  eval1: 15,
+  competency1: 160,
+  eval2: 15,
+  competency2: 160,
+  average: 20,
+  coefficient: 15,
+  total: 25,
+  remark: 35,
   get totalWidth() {
     return this.subject + this.eval1 + this.competency1 + this.eval2 +
       this.competency2 + this.average + this.coefficient + this.total + this.remark;
@@ -46,18 +47,18 @@ const TERM_COLUMNS = {
 };
 
 // ─── Term 3 / Final columns (10 total = 535) ───
-// ✅ Competency widths preserved at 118 each (was shrinking to 95)
+// Competency columns absorb the width freed up from the number columns.
 const FINAL_COLUMNS = {
   subject: 78,
-  eval1: 22,
-  competency1: 118,
-  eval2: 22,
-  competency2: 118,
-  average: 26,
-  coefficient: 22,
-  total: 28,
+  eval1: 15,
+  competency1: 152,
+  eval2: 15,
+  competency2: 152,
+  average: 20,
+  coefficient: 15,
+  total: 25,
   annualAvg: 28,
-  remark: 73,
+  remark: 35,
   get totalWidth() {
     return this.subject + this.eval1 + this.competency1 + this.eval2 +
       this.competency2 + this.average + this.coefficient +
@@ -586,12 +587,9 @@ function generateReportCardPDF(doc, data, isFinalYear = false, school = {}) {
   const hasAnnual = summary.annualAverage !== null && summary.annualAverage !== undefined;
 
   // ─── STUDENT PERFORMANCE ROWS ───
-  // Term 1/2: Average, Rank, Weighted Score, Decision
-  // Term 3/Final: Term Avg, Term Rank, Annual Avg, Annual Rank, Decision
   const studentRows = [];
 
   if (showAnnualColumn) {
-    // Term 3 / Final layout
     studentRows.push(
       { label: 'Term Avg', value: `${summary.termAverage} / 20` },
       { label: 'Term Rank', value: `${getOrdinalSuffix(summary.rank)} / ${summary.studentsInClass}` },
@@ -607,7 +605,6 @@ function generateReportCardPDF(doc, data, isFinalYear = false, school = {}) {
       }
     );
   } else {
-    // Term 1 / Term 2 layout
     studentRows.push(
       { label: 'Average', value: `${summary.termAverage} / 20` },
       { label: 'Rank', value: `${getOrdinalSuffix(summary.rank)} / ${summary.studentsInClass}` },
@@ -627,8 +624,6 @@ function generateReportCardPDF(doc, data, isFinalYear = false, school = {}) {
   studentRows.push({ label: 'Decision', value: decisionText, isDecision: true });
 
   // ─── CLASS PERFORMANCE ROWS ───
-  // Term 1/2: Class Average, Highest, Lowest, Total Students
-  // Term 3/Final: Term Class Avg, Annual Class Avg, Highest Annual, Total Students
   const classRows = showAnnualColumn
     ? [
         { label: 'Term Class Avg', value: `${summary.classAverage} / 20` },
