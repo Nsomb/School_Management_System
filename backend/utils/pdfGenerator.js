@@ -29,15 +29,14 @@ const PAGE = {
 };
 
 // ─── Term 1 / Term 2 columns (9 total = 535) ───
-// Competency columns absorb the width freed up from the number columns.
 const TERM_COLUMNS = {
   subject: 94,
   eval1: 15,
   competency1: 162,
   eval2: 15,
-  competency2: 160,
+  competency2: 159,
   average: 18,
-  coefficient: 16,
+  coefficient: 17,
   total: 20,
   remark: 35,
   get totalWidth() {
@@ -47,15 +46,14 @@ const TERM_COLUMNS = {
 };
 
 // ─── Term 3 / Final columns (10 total = 535) ───
-// Competency columns absorb the width freed up from the number columns.
 const FINAL_COLUMNS = {
   subject: 82,
   eval1: 15,
   competency1: 154,
   eval2: 15,
-  competency2: 152,
+  competency2: 151,
   average: 18,
-  coefficient: 16,
+  coefficient: 17,
   total: 20,
   annualAvg: 28,
   remark: 35,
@@ -68,11 +66,19 @@ const FINAL_COLUMNS = {
 
 const SUBJECT_ROW_HEIGHT_MIN = 12;
 const SUBJECT_ROW_HEIGHT_MAX = 20;
-const SUBJECT_TABLE_HEADER_HEIGHT = 13;
+const SUBJECT_TABLE_HEADER_HEIGHT = 20;   // increased for clean 2-line headers
 const STAT_TITLE_HEIGHT = 11;
 const STAT_ROW_HEIGHT = 10;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+// ─── Format helper: 2 decimals by default, safe against null/NaN ───
+const fmt = (value, decimals = 2) => {
+  if (value === null || value === undefined) return '-';
+  const n = Number(value);
+  if (isNaN(n)) return '-';
+  return n.toFixed(decimals);
+};
 
 const getShortEvalLabel = (evalType) => {
   const match = evalType.match(/(\d+)(?:st|nd|rd|th)?/);
@@ -210,7 +216,6 @@ function drawHeader(doc, term, academicYear, school = {}, isFinalYear = false) {
   const leftEndY = drawColumn(leftX, colWidth, buildLines(true), 'center');
   const rightEndY = drawColumn(rightX, colWidth, buildLines(false), 'center');
 
-  // ─── CENTER: logo (NO ELLIPSE) + school motto below ───
   const logoCenterY = startY + 45;
   const LOGO_SIZE = 46;
 
@@ -473,7 +478,11 @@ function generateReportCardPDF(doc, data, isFinalYear = false, school = {}) {
   doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#ffffff');
   let x = startX;
   headers.forEach((h, i) => {
-    doc.text(h, x + 2, tableTop + 1, { width: colWidths[i] - 4, align: 'center' });
+    doc.text(h, x + 2, tableTop + 3, {
+      width: colWidths[i] - 4,
+      height: headerHeight - 6,
+      align: 'center',
+    });
     x += colWidths[i];
   });
 
@@ -501,7 +510,7 @@ function generateReportCardPDF(doc, data, isFinalYear = false, school = {}) {
 
     const isExempt = subj.isExempt;
 
-    const m1 = isExempt ? 'EX' : (subj.eval1 !== null && subj.eval1 !== undefined ? subj.eval1.toFixed(1) : '-');
+    const m1 = isExempt ? 'EX' : fmt(subj.eval1);
     doc.font('Helvetica').text(m1, x + 2, singleLineY, { width: colWidths[1] - 4, align: 'center' });
     x += colWidths[1];
 
@@ -511,7 +520,7 @@ function generateReportCardPDF(doc, data, isFinalYear = false, school = {}) {
     });
     x += colWidths[2];
 
-    const m2 = isExempt ? 'EX' : (subj.eval2 !== null && subj.eval2 !== undefined ? subj.eval2.toFixed(1) : '-');
+    const m2 = isExempt ? 'EX' : fmt(subj.eval2);
     doc.font('Helvetica').text(m2, x + 2, singleLineY, { width: colWidths[3] - 4, align: 'center' });
     x += colWidths[3];
 
@@ -521,22 +530,23 @@ function generateReportCardPDF(doc, data, isFinalYear = false, school = {}) {
     });
     x += colWidths[4];
 
-    const avg = isExempt ? 'EX' : (subj.average !== null && subj.average !== undefined ? subj.average.toFixed(1) : '-');
+    const avg = isExempt ? 'EX' : fmt(subj.average);
     doc.font('Helvetica-Bold').text(avg, x + 2, singleLineY, { width: colWidths[5] - 4, align: 'center' });
     x += colWidths[5];
 
+    // Coefficient — no decimals
     doc.font('Helvetica').text(subj.coefficient.toString(), x + 2, singleLineY, {
       width: colWidths[6] - 4, align: 'center',
     });
     x += colWidths[6];
 
-    const total = isExempt ? 'EX' : (subj.total !== null && subj.total !== undefined ? subj.total.toFixed(1) : '-');
+    const total = isExempt ? 'EX' : fmt(subj.total);
     doc.font('Helvetica-Bold').text(total, x + 2, singleLineY, { width: colWidths[7] - 4, align: 'center' });
     x += colWidths[7];
 
     if (showAnnualColumn) {
       const annual = getAnnualAverage(subj);
-      const annualText = isExempt ? 'EX' : (annual !== null ? annual.toFixed(1) : '-');
+      const annualText = isExempt ? 'EX' : fmt(annual);
       doc.font('Helvetica-Bold').fillColor('#1a4b8c')
         .text(annualText, x + 2, singleLineY, { width: colWidths[8] - 4, align: 'center' });
       doc.fillColor('#333333');
@@ -591,11 +601,11 @@ function generateReportCardPDF(doc, data, isFinalYear = false, school = {}) {
 
   if (showAnnualColumn) {
     studentRows.push(
-      { label: 'Term Avg', value: `${summary.termAverage} / 20` },
+      { label: 'Term Avg', value: `${fmt(summary.termAverage)} / 20` },
       { label: 'Term Rank', value: `${getOrdinalSuffix(summary.rank)} / ${summary.studentsInClass}` },
       {
         label: 'Annual Avg',
-        value: hasAnnual ? `${summary.annualAverage} / 20` : '—',
+        value: hasAnnual ? `${fmt(summary.annualAverage)} / 20` : '—',
         highlight: true,
       },
       {
@@ -606,11 +616,11 @@ function generateReportCardPDF(doc, data, isFinalYear = false, school = {}) {
     );
   } else {
     studentRows.push(
-      { label: 'Average', value: `${summary.termAverage} / 20` },
+      { label: 'Average', value: `${fmt(summary.termAverage)} / 20` },
       { label: 'Rank', value: `${getOrdinalSuffix(summary.rank)} / ${summary.studentsInClass}` },
       {
         label: 'Weighted Score',
-        value: `${summary.totalScore} (Coef ${summary.totalCoeff})`,
+        value: `${fmt(summary.totalScore)} (Coef ${summary.totalCoeff})`,
       }
     );
   }
@@ -626,25 +636,25 @@ function generateReportCardPDF(doc, data, isFinalYear = false, school = {}) {
   // ─── CLASS PERFORMANCE ROWS ───
   const classRows = showAnnualColumn
     ? [
-        { label: 'Term Class Avg', value: `${summary.classAverage} / 20` },
+        { label: 'Term Class Avg', value: `${fmt(summary.classAverage)} / 20` },
         {
           label: 'Annual Class Avg',
-          value: summary.annualClassAverage != null ? `${summary.annualClassAverage} / 20` : '—',
+          value: summary.annualClassAverage != null ? `${fmt(summary.annualClassAverage)} / 20` : '—',
           highlight: true,
         },
         {
           label: 'Highest Annual',
           value: summary.highestAnnualAverage != null
-            ? `${summary.highestAnnualAverage} / 20`
-            : `${summary.highestAverage} / 20`,
+            ? `${fmt(summary.highestAnnualAverage)} / 20`
+            : `${fmt(summary.highestAverage)} / 20`,
           highlight: true,
         },
         { label: 'Total Students', value: String(summary.studentsInClass) },
       ]
     : [
-        { label: 'Class Average', value: `${summary.classAverage} / 20` },
-        { label: 'Highest Average', value: `${summary.highestAverage} / 20` },
-        { label: 'Lowest Average', value: `${summary.lowestAverage} / 20` },
+        { label: 'Class Average', value: `${fmt(summary.classAverage)} / 20` },
+        { label: 'Highest Average', value: `${fmt(summary.highestAverage)} / 20` },
+        { label: 'Lowest Average', value: `${fmt(summary.lowestAverage)} / 20` },
         { label: 'Total Students', value: String(summary.studentsInClass) },
       ];
 
