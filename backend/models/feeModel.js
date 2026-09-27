@@ -292,36 +292,61 @@ async function getPaymentDetailsById(paymentId, schoolId) {
 async function getDashboardStats(academicYear, classId, schoolId) {
   if (!academicYear) throw new Error('Academic year is required.');
 
-  const classFilterExpected = classId ? `AND fsc.class_id = $3` : '';
-  const expectedParams = classId ? [academicYear, schoolId, classId] : [academicYear, schoolId];
+  const isAllClasses = !classId;
+  const studentClassFilter = isAllClasses ? '' : `AND s.class_id = $3`;
+  const params = isAllClasses ? [academicYear, schoolId] : [academicYear, schoolId, classId];
 
+  // ─── EXPECTED: structure total × student count, per class, then summed ───
   const expectedQuery = `
-    SELECT SUM(COALESCE(fs.total_expected, 0)) AS total_expected
+    SELECT COALESCE(SUM(sub.struct_total * sub.student_count), 0) AS total_expected
     FROM (
-      SELECT fs.id,
-             (SELECT SUM(fc.amount) FROM fees_components fc WHERE fc.fees_structure_id = fs.id) AS total_expected
-      FROM fees_structure fs
-      JOIN fees_structure_classes fsc ON fs.id = fsc.fee_structure_id
-      WHERE fs.academic_year = $1 AND fs.school_id = $2 ${classFilterExpected}
-      GROUP BY fs.id
-    ) fs
+      SELECT
+        c.id AS class_id,
+        COALESCE((
+          SELECT SUM(fc.amount)
+          FROM fees_components fc
+          WHERE fc.fees_structure_id IN (
+            SELECT fs.id
+            FROM fees_structure fs
+            JOIN fees_structure_classes fsc ON fsc.fee_structure_id = fs.id
+            WHERE fsc.class_id = c.id
+              AND fs.academic_year = $1
+              AND fs.school_id = $2
+          )
+        ), 0) AS struct_total,
+        (
+          SELECT COUNT(*)
+          FROM students s
+          WHERE s.class_id = c.id AND s.school_id = $2
+        ) AS student_count
+      FROM classes c
+      WHERE c.school_id = $2
+      ${isAllClasses ? '' : 'AND c.id = $3'}
+    ) sub
   `;
-  const expectedResult = await db.tenantQuery(expectedQuery, expectedParams, schoolId);
+  const expectedResult = await db.tenantQuery(expectedQuery, params, schoolId);
   const totalExpected = parseFloat(expectedResult.rows[0]?.total_expected) || 0;
 
+  // ─── COLLECTED: sum of payments from students in scope ───
   const collectedQuery = `
-    SELECT SUM(p.amount_paid) AS total_collected
+    SELECT COALESCE(SUM(p.amount_paid), 0) AS total_collected
     FROM payments p
+    JOIN students s ON p.student_id = s.id
     JOIN fees_structure fs ON p.fee_structure_id = fs.id
-    JOIN fees_structure_classes fsc ON fs.id = fsc.fee_structure_id
-    WHERE fs.academic_year = $1 AND fs.school_id = $2 AND p.status = 'active' ${classFilterExpected}
+    WHERE p.status = 'active'
+      AND p.school_id = $2
+      AND fs.academic_year = $1
+      AND fs.school_id = $2
+      ${studentClassFilter}
   `;
-  const collectedResult = await db.tenantQuery(collectedQuery, expectedParams, schoolId);
+  const collectedResult = await db.tenantQuery(collectedQuery, params, schoolId);
   const totalCollected = parseFloat(collectedResult.rows[0]?.total_collected) || 0;
 
-  const outstanding = totalExpected - totalCollected;
-  const collectionPercentage = totalExpected > 0 ? (totalCollected / totalExpected) * 100 : 0;
+  const outstanding = Math.max(totalExpected - totalCollected, 0);
+  const rawPercent = totalExpected > 0 ? (totalCollected / totalExpected) * 100 : 0;
+  const collectionPercentage = Math.min(Math.round(rawPercent * 100) / 100, 100);
 
+  // ─── CLEARED STUDENTS ───
   const clearedQuery = `
     SELECT COUNT(DISTINCT s.id) AS cleared
     FROM students s
@@ -336,15 +361,16 @@ async function getDashboardStats(academicYear, classId, schoolId) {
       FROM fees_structure_classes fsc
       JOIN fees_structure fs ON fsc.fee_structure_id = fs.id
       WHERE fsc.class_id = s.class_id AND fs.academic_year = $1 AND fs.school_id = $2
-      AND (SELECT SUM(fc.amount) FROM fees_components fc WHERE fc.fees_structure_id = fs.id)
+      AND (SELECT COALESCE(SUM(fc.amount), 0) FROM fees_components fc WHERE fc.fees_structure_id = fs.id)
           > COALESCE((SELECT SUM(p.amount_paid) FROM payments p
-                      WHERE p.student_id = s.id AND p.fee_structure_id = fs.id AND p.status='active'), 0)
+                      WHERE p.student_id = s.id AND p.fee_structure_id = fs.id AND p.status = 'active'), 0)
     )
-    ${classId ? `AND s.class_id = $3` : ''}
+    ${studentClassFilter}
   `;
-  const clearedResult = await db.tenantQuery(clearedQuery, expectedParams, schoolId);
+  const clearedResult = await db.tenantQuery(clearedQuery, params, schoolId);
   const clearedCount = parseInt(clearedResult.rows[0]?.cleared) || 0;
 
+  // ─── OWING STUDENTS ───
   const owingQuery = `
     SELECT COUNT(DISTINCT s.id) AS owing
     FROM students s
@@ -353,36 +379,56 @@ async function getDashboardStats(academicYear, classId, schoolId) {
       SELECT 1 FROM fees_structure_classes fsc
       JOIN fees_structure fs ON fsc.fee_structure_id = fs.id
       WHERE fsc.class_id = s.class_id AND fs.academic_year = $1 AND fs.school_id = $2
-      AND (SELECT SUM(fc.amount) FROM fees_components fc WHERE fc.fees_structure_id = fs.id)
+      AND (SELECT COALESCE(SUM(fc.amount), 0) FROM fees_components fc WHERE fc.fees_structure_id = fs.id)
           > COALESCE((SELECT SUM(p.amount_paid) FROM payments p
-                      WHERE p.student_id = s.id AND p.fee_structure_id = fs.id AND p.status='active'), 0)
+                      WHERE p.student_id = s.id AND p.fee_structure_id = fs.id AND p.status = 'active'), 0)
     )
-    ${classId ? `AND s.class_id = $3` : ''}
+    ${studentClassFilter}
   `;
-  const owingResult = await db.tenantQuery(owingQuery, expectedParams, schoolId);
+  const owingResult = await db.tenantQuery(owingQuery, params, schoolId);
   const owingCount = parseInt(owingResult.rows[0]?.owing) || 0;
 
+  // ─── TODAY ───
   const today = new Date().toISOString().split('T')[0];
-  const todayResult = await db.tenantQuery(
-    `SELECT COALESCE(SUM(amount_paid), 0) AS today_collected FROM payments
-     WHERE DATE(payment_date)=$1 AND status='active' AND school_id=$2`,
-    [today, schoolId], schoolId
-  );
+  const todayQuery = `
+    SELECT COALESCE(SUM(p.amount_paid), 0) AS today_collected
+    FROM payments p
+    JOIN students s ON p.student_id = s.id
+    WHERE DATE(p.payment_date) = $1
+      AND p.status = 'active'
+      AND p.school_id = $2
+      ${isAllClasses ? '' : 'AND s.class_id = $3'}
+  `;
+  const todayParams = isAllClasses ? [today, schoolId] : [today, schoolId, classId];
+  const todayResult = await db.tenantQuery(todayQuery, todayParams, schoolId);
   const todayCollected = parseFloat(todayResult.rows[0]?.today_collected) || 0;
 
+  // ─── THIS MONTH ───
   const monthStart = new Date();
   monthStart.setDate(1);
   const monthStartStr = monthStart.toISOString().split('T')[0];
-  const monthResult = await db.tenantQuery(
-    `SELECT COALESCE(SUM(amount_paid), 0) AS month_collected FROM payments
-     WHERE payment_date >= $1 AND status='active' AND school_id=$2`,
-    [monthStartStr, schoolId], schoolId
-  );
+  const monthQuery = `
+    SELECT COALESCE(SUM(p.amount_paid), 0) AS month_collected
+    FROM payments p
+    JOIN students s ON p.student_id = s.id
+    WHERE p.payment_date >= $1
+      AND p.status = 'active'
+      AND p.school_id = $2
+      ${isAllClasses ? '' : 'AND s.class_id = $3'}
+  `;
+  const monthParams = isAllClasses ? [monthStartStr, schoolId] : [monthStartStr, schoolId, classId];
+  const monthResult = await db.tenantQuery(monthQuery, monthParams, schoolId);
   const monthCollected = parseFloat(monthResult.rows[0]?.month_collected) || 0;
 
   return {
-    totalExpected, totalCollected, outstanding, collectionPercentage,
-    clearedCount, owingCount, todayCollected, monthCollected,
+    totalExpected,
+    totalCollected,
+    outstanding,
+    collectionPercentage,
+    clearedCount,
+    owingCount,
+    todayCollected,
+    monthCollected,
   };
 }
 
@@ -397,17 +443,27 @@ async function getTotalFeesCollectedByClassAndYear(academicYear, classId, school
       $1 AS academic_year,
       COALESCE((
         SELECT SUM(fc.amount)
-        FROM fees_structure_classes fsc
-        JOIN fees_structure fs ON fsc.fee_structure_id = fs.id
-        LEFT JOIN fees_components fc ON fc.fees_structure_id = fs.id
-        WHERE fsc.class_id = c.id AND fs.academic_year = $1 AND fs.school_id = $2
-      ), 0) AS total_expected,
+        FROM fees_components fc
+        WHERE fc.fees_structure_id IN (
+          SELECT fs.id
+          FROM fees_structure fs
+          JOIN fees_structure_classes fsc ON fsc.fee_structure_id = fs.id
+          WHERE fsc.class_id = c.id
+            AND fs.academic_year = $1
+            AND fs.school_id = $2
+        )
+      ), 0) * (
+        SELECT COUNT(*) FROM students s WHERE s.class_id = c.id AND s.school_id = $2
+      ) AS total_expected,
       COALESCE((
         SELECT SUM(p.amount_paid)
         FROM payments p
+        JOIN students s ON p.student_id = s.id
         JOIN fees_structure fs ON p.fee_structure_id = fs.id
-        JOIN fees_structure_classes fsc ON fs.id = fsc.fee_structure_id
-        WHERE fsc.class_id = c.id AND fs.academic_year = $1 AND p.status = 'active' AND fs.school_id = $2
+        WHERE s.class_id = c.id
+          AND fs.academic_year = $1
+          AND p.status = 'active'
+          AND fs.school_id = $2
       ), 0) AS total_paid,
       0 AS percentage_paid
     FROM classes c
@@ -415,7 +471,10 @@ async function getTotalFeesCollectedByClassAndYear(academicYear, classId, school
   `;
   const params = [academicYear, schoolId];
   let idx = 3;
-  if (classId) { query += ` AND c.id = $${idx++}`; params.push(classId); }
+  if (classId) {
+    query += ` AND c.id = $${idx++}`;
+    params.push(classId);
+  }
   query += ` ORDER BY c.class_name;`;
   const result = await db.tenantQuery(query, params, schoolId);
 
@@ -426,7 +485,7 @@ async function getTotalFeesCollectedByClassAndYear(academicYear, classId, school
       ...row,
       total_expected: expected,
       total_paid: paid,
-      percentage_paid: expected > 0 ? (paid / expected) * 100 : 0,
+      percentage_paid: expected > 0 ? Math.min((paid / expected) * 100, 100) : 0,
     };
   });
 }
@@ -787,7 +846,7 @@ async function deleteFeeStructureById(feesStructureId, schoolId) {
 
     await client.query(`DELETE FROM fees_structure_classes WHERE fee_structure_id = $1 AND school_id = $2`,
       [feesStructureId, schoolId]);
-    await client.query(`DELETE FROM fees_components WHERE fee_structure_id = $1 AND school_id = $2`,
+    await client.query(`DELETE FROM fees_components WHERE fees_structure_id = $1 AND school_id = $2`,
       [feesStructureId, schoolId]);
     const result = await client.query(`DELETE FROM fees_structure WHERE id = $1 AND school_id = $2`,
       [feesStructureId, schoolId]);
