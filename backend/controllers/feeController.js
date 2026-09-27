@@ -92,6 +92,7 @@ exports.createFeeStructure = async (req, res) => {
 
     await logAudit({
       userId: req.user.id,
+      username: req.user.username,
       action: 'FEE_STRUCTURE_CREATED',
       entityType: 'fee_structure',
       entityId: feeStructureId,
@@ -135,6 +136,7 @@ exports.updateFeeStructure = async (req, res) => {
       const newStructure = await FeeModel.findFeeStructureByIdWithComponents(id, schoolId);
       await logAudit({
         userId: req.user.id,
+      username: req.user.username,
         action: 'FEE_STRUCTURE_UPDATED',
         entityType: 'fee_structure',
         entityId: id,
@@ -166,6 +168,7 @@ exports.deleteFeeStructure = async (req, res) => {
     if (deletedRows > 0) {
       await logAudit({
         userId: req.user.id,
+      username: req.user.username,
         action: 'FEE_STRUCTURE_DELETED',
         entityType: 'fee_structure',
         entityId: id,
@@ -313,6 +316,7 @@ exports.recordPayment = async (req, res) => {
 
     await logAudit({
       userId: req.user.id,
+      username: req.user.username,
       action: 'PAYMENT_CREATED',
       entityType: 'payment',
       entityId: paymentId,
@@ -403,6 +407,7 @@ exports.voidPayment = async (req, res) => {
 
     await logAudit({
       userId: req.user.id,
+      username: req.user.username,
       action: 'PAYMENT_VOIDED',
       entityType: 'payment',
       entityId: paymentId,
@@ -434,6 +439,7 @@ exports.reversePayment = async (req, res) => {
 
     await logAudit({
       userId: req.user.id,
+      username: req.user.username,
       action: 'PAYMENT_REVERSED',
       entityType: 'payment',
       entityId: paymentId,
@@ -644,7 +650,8 @@ exports.createDiscountType = async (req, res) => {
     if (!name || !type || value === undefined) throw new Error('Name, type, and value are required.');
     const id = await discountService.createDiscountType({ name, type, value, description }, schoolId);
     await logAudit({
-      userId: req.user.id, action: 'DISCOUNT_TYPE_CREATED', entityType: 'discount_type', entityId: id,
+      userId: req.user.id,
+      username: req.user.username, action: 'DISCOUNT_TYPE_CREATED', entityType: 'discount_type', entityId: id,
       newData: { name, type, value, description },
       ipAddress: getClientIp(req), userAgent: getUserAgent(req), schoolId,
     });
@@ -663,7 +670,8 @@ exports.updateDiscountType = async (req, res) => {
     const success = await discountService.updateDiscountType(id, { name, type, value, description }, schoolId);
     if (!success) throw new Error('Discount type not found.');
     await logAudit({
-      userId: req.user.id, action: 'DISCOUNT_TYPE_UPDATED', entityType: 'discount_type', entityId: id,
+      userId: req.user.id,
+      username: req.user.username, action: 'DISCOUNT_TYPE_UPDATED', entityType: 'discount_type', entityId: id,
       oldData: oldType, newData: { name, type, value, description },
       ipAddress: getClientIp(req), userAgent: getUserAgent(req), schoolId,
     });
@@ -680,7 +688,8 @@ exports.deleteDiscountType = async (req, res) => {
     const success = await discountService.deleteDiscountType(id, schoolId);
     if (!success) throw new Error('Discount type not found.');
     await logAudit({
-      userId: req.user.id, action: 'DISCOUNT_TYPE_DELETED', entityType: 'discount_type', entityId: id,
+      userId: req.user.id,
+      username: req.user.username, action: 'DISCOUNT_TYPE_DELETED', entityType: 'discount_type', entityId: id,
       oldData: oldType,
       ipAddress: getClientIp(req), userAgent: getUserAgent(req), schoolId,
     });
@@ -718,7 +727,8 @@ exports.assignStudentDiscount = async (req, res) => {
       studentId, discountTypeId, academicYear, term, approvedBy: req.user.id, notes,
     }, schoolId);
     await logAudit({
-      userId: req.user.id, action: 'STUDENT_DISCOUNT_ASSIGNED', entityType: 'student_discount', entityId: id,
+      userId: req.user.id,
+      username: req.user.username, action: 'STUDENT_DISCOUNT_ASSIGNED', entityType: 'student_discount', entityId: id,
       newData: { studentId, discountTypeId, academicYear, term, notes },
       ipAddress: getClientIp(req), userAgent: getUserAgent(req), schoolId,
     });
@@ -738,7 +748,8 @@ exports.removeStudentDiscount = async (req, res) => {
     const success = await discountService.removeStudentDiscount(id, schoolId);
     if (!success) throw new Error('Failed to remove.');
     await logAudit({
-      userId: req.user.id, action: 'STUDENT_DISCOUNT_REMOVED', entityType: 'student_discount', entityId: id,
+      userId: req.user.id,
+      username: req.user.username, action: 'STUDENT_DISCOUNT_REMOVED', entityType: 'student_discount', entityId: id,
       oldData: existing.rows[0],
       ipAddress: getClientIp(req), userAgent: getUserAgent(req), schoolId,
     });

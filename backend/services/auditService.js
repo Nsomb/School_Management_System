@@ -43,11 +43,24 @@ async function logAudit({
 }
 
 async function getAuditLogs(filters = {}, schoolId) {
+  // COALESCE(al.username, a.username) fills in the username for OLD audit
+  // rows that were created before we started storing it. New rows store
+  // it directly, so the JOIN is just a safety net.
   let query = `
     SELECT
-      al.id, al.user_id, al.username, al.action, al.entity_type, al.entity_id,
-      al.old_data, al.new_data, al.ip_address, al.user_agent, al.created_at
+      al.id,
+      al.user_id,
+      COALESCE(al.username, a.username) AS username,
+      al.action,
+      al.entity_type,
+      al.entity_id,
+      al.old_data,
+      al.new_data,
+      al.ip_address,
+      al.user_agent,
+      al.created_at
     FROM audit_logs al
+    LEFT JOIN admins a ON al.user_id = a.id
     WHERE al.school_id = $1
   `;
   const params = [schoolId];

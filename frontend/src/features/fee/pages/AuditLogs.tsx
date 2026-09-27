@@ -57,7 +57,7 @@ const exportAuditLogsToPDF = (logs: AuditLog[], filters: any) => {
   const headers = ['Date/Time', 'User', 'Action', 'Entity', 'IP Address', 'Details'];
   const rows = logs.map(log => [
     new Date(log.created_at).toLocaleString(),
-    log.user_username || 'System',
+    (log as any).username || (log as any).user_username || 'System',
     log.action.replace(/_/g, ' '),
     `${log.entity_type} #${log.entity_id}`,
     log.ip_address || 'N/A',
@@ -174,6 +174,14 @@ const AuditLogs: React.FC = () => {
     if (action.includes('VOID') || action.includes('REVERS')) return 'error';
     if (action.includes('DELET')) return 'error';
     return 'default';
+  };
+
+  // ─── Resolve the display name for a log entry ───
+  // Prefers `username` (new field), falls back to `user_username` (old type),
+  // then 'System' if none exist.
+  const getUserDisplayName = (log: AuditLog): string => {
+    const anyLog = log as any;
+    return anyLog.username || anyLog.user_username || 'System';
   };
 
   if (loading && logs.length === 0) {
@@ -305,7 +313,7 @@ const AuditLogs: React.FC = () => {
                     </Box>
 
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      User: {log.user_username || 'System'}
+                      User: {getUserDisplayName(log)}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       Entity: {log.entity_type} #{log.entity_id}
@@ -365,7 +373,7 @@ const AuditLogs: React.FC = () => {
                   logs.map((log) => (
                     <TableRow key={log.id} hover>
                       <TableCell>{new Date(log.created_at).toLocaleString()}</TableCell>
-                      <TableCell>{log.user_username || 'System'}</TableCell>
+                      <TableCell>{getUserDisplayName(log)}</TableCell>
                       <TableCell>
                         <Chip
                           label={log.action.replace(/_/g, ' ')}
