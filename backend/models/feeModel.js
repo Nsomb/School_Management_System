@@ -221,7 +221,7 @@ async function getPayments(filters = {}, schoolId) {
       p.student_discount_id, p.component_name, p.school_id,
       s.id AS student_id, s.name AS student_name,
       c.class_name,
-      fs.id AS fees_structure_id, fs.academic_year, fs.term,
+      fs.id AS fee_structure_id, fs.academic_year, fs.term,
       fs.description AS fee_description,
       (SELECT SUM(fc.amount) FROM fees_components fc WHERE fc.fees_structure_id = fs.id) AS total_fee_amount_expected,
       a.username AS recorded_by_admin_username
@@ -265,7 +265,7 @@ async function getPaymentDetailsById(paymentId, schoolId) {
       p.student_discount_id, p.component_name, p.school_id,
       s.id AS student_id, s.name AS student_name,
       c.class_name,
-      fs.id AS fees_structure_id, fs.academic_year, fs.term,
+      fs.id AS fee_structure_id, fs.academic_year, fs.term,
       fs.description AS fee_description,
       (SELECT SUM(fc.amount) FROM fees_components fc WHERE fc.fees_structure_id = fs.id) AS total_fee_amount_expected,
       (SELECT SUM(fc.amount) FROM fees_components fc WHERE fc.fees_structure_id = fs.id)
