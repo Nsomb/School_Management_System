@@ -22,8 +22,7 @@ export const QuestionUploadForm = ({
   evaluations = [],
   onSuccess,
 }: QuestionUploadFormProps) => {
-  // classes and evaluations are accepted for API compatibility with parent pages
-  // but not yet used in this form. Prefix with underscore to avoid "unused" warnings.
+  // Accepted for API compatibility with parent pages, not used here yet.
   void classes;
   void evaluations;
 
@@ -81,11 +80,14 @@ export const QuestionUploadForm = ({
     }
 
     try {
-      await uploadQuestion(formData);
-      toast.success('Question uploaded successfully!');
-      setFormData({ subject_id: '', file: null });
-      const fileInput = document.getElementById('file-upload') as HTMLInputElement;
-      if (fileInput) fileInput.value = '';
+      const ok = await uploadQuestion(formData);
+      if (ok) {
+        toast.success('Question uploaded successfully!');
+        setFormData({ subject_id: '', file: null });
+        const fileInput = document.getElementById('file-upload') as HTMLInputElement;
+        if (fileInput) fileInput.value = '';
+      }
+      // On failure, the hook sets `error` and it renders in the alert box below.
     } catch (err) {
       console.error('Upload error:', err);
     }
@@ -98,11 +100,15 @@ export const QuestionUploadForm = ({
       <h2 className="text-lg font-semibold text-gray-800 mb-4">Upload Question Paper</h2>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md text-sm">{error}</div>
+        <div className="mb-4 p-3 bg-red-100 border border-red-200 text-red-700 rounded-md text-sm">
+          {error}
+        </div>
       )}
 
       {success && (
-        <div className="mb-4 p-3 bg-green-100 text-green-700 rounded-md text-sm">{success}</div>
+        <div className="mb-4 p-3 bg-green-100 border border-green-200 text-green-700 rounded-md text-sm">
+          {success}
+        </div>
       )}
 
       <form onSubmit={handleSubmit}>
@@ -126,6 +132,11 @@ export const QuestionUploadForm = ({
                 </option>
               ))}
             </select>
+            {safeSubjects.length === 0 && (
+              <p className="mt-1 text-xs text-amber-600">
+                You are not assigned to any subject yet. Contact your administrator.
+              </p>
+            )}
           </div>
 
           <div>
@@ -163,7 +174,7 @@ export const QuestionUploadForm = ({
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || safeSubjects.length === 0}
               className="w-full md:w-auto px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {isLoading ? 'Uploading...' : 'Upload Question'}
