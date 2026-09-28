@@ -110,6 +110,18 @@ export interface OutstandingBalance {
 // STUDENT FEE SUMMARY
 // ============================================================================
 
+/** A single fee structure row returned by the student-fee-summary endpoint. */
+export interface StudentFeeStructureRow {
+  id?: number;                    // ← ADDED (backend may send `id`)
+  fees_structure_id?: number;     // ← ADDED (legacy identifier from older responses)
+  academic_year: string;
+  term: string;
+  description?: string;
+  due_date?: string;
+  total_expected_amount: number;
+  components?: FeeComponent[];
+}
+
 export interface StudentFeeSummary {
   studentFound: boolean;
   studentDetails: {
@@ -118,15 +130,10 @@ export interface StudentFeeSummary {
     admission_number?: string;
     class_name: string;
   };
-  feeStructure: {
-    fees_structure_id: number;
-    academic_year: string;
-    term: string;
-    description?: string;
-    due_date?: string;
-    total_expected_amount: number;
-    components: FeeComponent[];
-  } | null;
+  /** Backend returns the fee structures as an array. ← ADDED */
+  feeStructures?: StudentFeeStructureRow[];
+  /** Legacy alias kept for backward compatibility. ← CHANGED to optional */
+  feeStructure?: StudentFeeStructureRow | null;
   payments: {
     payment_id: number;
     amount_paid: number;
@@ -139,6 +146,7 @@ export interface StudentFeeSummary {
     component_name?: string;
   }[];
   totalPaid: number;
+  totalExpected?: number;   // ← ADDED (backend returns this)
   outstandingBalance: number;
 }
 
@@ -193,7 +201,10 @@ export interface DashboardStats {
 export interface AuditLog {
   id: number;
   user_id: number;
-  user_username: string;
+  /** ← ADDED: primary field returned by the updated backend (COALESCE fallback) */
+  username?: string;
+  /** Legacy field — kept optional so older code doesn't break. */
+  user_username?: string;
   action: string;
   entity_type: string;
   entity_id: number;
