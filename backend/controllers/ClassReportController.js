@@ -4,7 +4,7 @@ const PDFDocument = require('pdfkit');
 const { addClassHeader } = require('../utils/classPdfHeader');
 const { getSchoolConfig } = require('../services/schoolConfigCache');
 
-// ==================== Term to Evaluation Type Mapping ====================
+// ==================== Term → Evaluation Type Mapping ====================
 const getEvaluationTypesForTerm = (term) => {
   const mapping = {
     'Term 1': ['1st Evaluation', '2nd Evaluation'],
@@ -102,7 +102,7 @@ const buildStudentMarksMatrix = (students, subjects, marksData) => {
     };
   });
 
-  // competition rank by AVG (4-decimal rounding to avoid float ties)
+  // Competition rank by AVG (4-decimal rounding to avoid float ties)
   const sorted = [...withTotals].sort((a, b) => {
     const aAvg = Number(parseFloat(a.avg || 0).toFixed(4));
     const bAvg = Number(parseFloat(b.avg || 0).toFixed(4));
@@ -154,10 +154,11 @@ const generateClassReportPDF = (students, subjects, metadata, school) => {
       doc.on('error', reject);
 
       const marginX = 25;
-      const usableWidth = doc.page.width - 2 * marginX;
+      const usableWidth = doc.page.width - 2 * marginX;   // A4 landscape → 792pt
       const headerHeight = 105;
       const bottomLimit = doc.page.height - 45;
 
+      // ─── Fixed-width columns ───
       const rollColWidth = 22;
       const nameColWidth = 155;
       const totalColWidth = 52;
@@ -166,18 +167,28 @@ const generateClassReportPDF = (students, subjects, metadata, school) => {
       const fixedTotalWidth =
         rollColWidth + nameColWidth + totalColWidth + avgColWidth + rankColWidth;
 
+      // ─── ADAPTIVE subject column width ───
+      //   • With few subjects → columns stretch up to 45pt for a nicer look.
+      //   • With many subjects → columns shrink, floor at 12pt.
+      //   • Balanced class (≈10 subjects) → each column ≈ remaining/10.
+      const SUBJECT_COL_MAX = 45;
+      const SUBJECT_COL_MIN = 12;
       const remainingWidth = usableWidth - fixedTotalWidth;
-      const MIN_SUBJECT_WIDTH = 26;
-      const subjectColWidth = Math.max(
-        MIN_SUBJECT_WIDTH,
-        remainingWidth / Math.max(1, subjects.length)
+      const idealWidth = remainingWidth / Math.max(1, subjects.length);
+      const subjectColWidth = Math.min(
+        SUBJECT_COL_MAX,
+        Math.max(SUBJECT_COL_MIN, idealWidth)
       );
+
+      // Table width computed from actual column widths. When few subjects,
+      // the table shrinks; when many, it uses the full page.
+      const tableWidth = fixedTotalWidth + subjects.length * subjectColWidth;
 
       const drawRotatedText = (text, cellX, cellY, cellWidth, cellHeight) => {
         doc.save();
         doc.translate(cellX + cellWidth / 2 - 4, cellY + cellHeight - 6);
         doc.rotate(-90);
-        doc.fontSize(8).font('Helvetica-Bold').fillColor('#000000');
+        doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#000000');
         doc.text(text, 0, 0, {
           width: cellHeight - 12,
           align: 'left',
@@ -187,9 +198,9 @@ const generateClassReportPDF = (students, subjects, metadata, school) => {
       };
 
       const drawTableHeader = (startY) => {
-        doc.rect(marginX, startY, usableWidth, headerHeight)
+        doc.rect(marginX, startY, tableWidth, headerHeight)
           .fillColor('#FFFFFF').fill();
-        doc.rect(marginX, startY, usableWidth, headerHeight)
+        doc.rect(marginX, startY, tableWidth, headerHeight)
           .strokeColor('#000000').lineWidth(1).stroke();
 
         let currX = marginX;
@@ -211,7 +222,7 @@ const generateClassReportPDF = (students, subjects, metadata, school) => {
         doc.moveTo(currX, startY).lineTo(currX, startY + headerHeight)
           .strokeColor('#000000').lineWidth(0.6).stroke();
 
-        // SUBJECTS — with coefficient in parentheses
+        // SUBJECTS with coefficient in header
         subjects.forEach((subj) => {
           const code = formatSubjectCode(subj.name, subj.coefficient);
           drawRotatedText(code, currX, startY, subjectColWidth, headerHeight);
@@ -258,7 +269,7 @@ const generateClassReportPDF = (students, subjects, metadata, school) => {
           y = drawTableHeader(nextHeaderY + 8);
         }
 
-        doc.rect(marginX, y, usableWidth, rowHeight)
+        doc.rect(marginX, y, tableWidth, rowHeight)
           .strokeColor('#000000').lineWidth(0.6).stroke();
 
         let xPos = marginX;
@@ -274,7 +285,7 @@ const generateClassReportPDF = (students, subjects, metadata, school) => {
         });
         xPos += nameColWidth;
 
-        // SUBJECT MARKS — RAW values, as entered
+        // Subject marks — raw values
         subjects.forEach((subj) => {
           const mark = student.marks[subj.name];
           const markText = mark !== null && mark !== undefined ? String(mark) : '-';
@@ -291,7 +302,7 @@ const generateClassReportPDF = (students, subjects, metadata, school) => {
           xPos += subjectColWidth;
         });
 
-        // TOTAL — weighted
+        // TOTAL
         doc.font('Helvetica-Bold').text(
           student.total != null ? student.total.toFixed(2) : '-',
           xPos, y + rowHeight / 2 - 4,
@@ -299,7 +310,7 @@ const generateClassReportPDF = (students, subjects, metadata, school) => {
         );
         xPos += totalColWidth;
 
-        // AVG — weighted
+        // AVG
         doc.font('Helvetica-Bold').text(
           student.avg != null ? student.avg.toFixed(2) : '-',
           xPos, y + rowHeight / 2 - 4,
@@ -335,7 +346,7 @@ const generateClassReportPDF = (students, subjects, metadata, school) => {
         y += rowHeight;
       });
 
-      // Page footers
+      // Page footers — full page width (not the table width)
       const range = doc.bufferedPageRange();
       for (let i = range.start; i < range.start + range.count; i++) {
         doc.switchToPage(i);
