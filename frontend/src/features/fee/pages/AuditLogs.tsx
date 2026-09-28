@@ -23,7 +23,7 @@ import {
   Card,
   CardContent,
   Stack,
-  Divider,
+  Tooltip,
   useTheme,
   useMediaQuery
 } from '@mui/material';
@@ -32,6 +32,161 @@ import { useFeeApi } from '../hooks/useFeeApi';
 import type { AuditLog } from '../types/feeTypes';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+// ─── Helper: turn a raw audit log entry into human-readable text ─────────────
+const formatAuditDetails = (log: AuditLog): string => {
+  const action = log.action || '';
+  const n = (log as any).new_data;
+  const o = (log as any).old_data;
+
+  const fmtAmount = (v: any): string => {
+    if (v === null || v === undefined || v === '') return '';
+    const num = Number(v);
+    if (isNaN(num)) return String(v);
+    return `${num.toLocaleString()} FCFA`;
+  };
+
+  const joinParts = (parts: (string | undefined | null | false)[]): string =>
+    parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+
+  switch (action) {
+    case 'PAYMENT_CREATED': {
+      if (!n) return '—';
+      const name = n.student_name || `Student #${n.student_id ?? '?'}`;
+      const cls = n.student_class || n.class_name;
+      const comp = n.component_name;
+      const amt = fmtAmount(n.amount_paid);
+      const method = n.payment_method;
+      return joinParts([
+        'Paid',
+        amt,
+        comp ? `${comp} fee` : 'fee',
+        `for ${name}`,
+        cls ? `(${cls})` : '',
+        method ? `— ${method}` : '',
+      ]);
+    }
+
+    case 'PAYMENT_VOIDED': {
+      const ref = o || n || {};
+      const name = ref.student_name;
+      const amt = fmtAmount(ref.amount_paid);
+      const receipt = ref.receipt_number;
+      const reason = ref.void_reason || (n && n.void_reason);
+      return joinParts([
+        'Voided payment',
+        receipt ? `#${receipt}` : '',
+        amt ? `of ${amt}` : '',
+        name ? `for ${name}` : '',
+        reason ? `— ${reason}` : '',
+      ]) || 'Payment voided';
+    }
+
+    case 'PAYMENT_REVERSED': {
+      const orig = (n && n.original) || o || {};
+      const name = orig.student_name;
+      const amt = fmtAmount(orig.amount_paid);
+      const receipt = orig.receipt_number;
+      const reason = orig.reversal_reason;
+      return joinParts([
+        'Reversed payment',
+        receipt ? `#${receipt}` : '',
+        amt ? `of ${amt}` : '',
+        name ? `for ${name}` : '',
+        reason ? `— ${reason}` : '',
+      ]) || 'Payment reversed';
+    }
+
+    case 'FEE_STRUCTURE_CREATED': {
+      if (!n) return 'Created fee structure';
+      const classes = Array.isArray(n.class_names) ? n.class_names.join(', ') : '';
+      const year = n.academic_year || '';
+      const term = n.term || '';
+      const total = Array.isArray(n.components)
+        ? n.components.reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0)
+        : 0;
+      return joinParts([
+        'Created fee structure',
+        classes ? `for ${classes}` : '',
+        year || term ? `(${[year, term].filter(Boolean).join(' ')})` : '',
+        total ? `— ${fmtAmount(total)}` : '',
+      ]);
+    }
+
+    case 'FEE_STRUCTURE_UPDATED': {
+      const ref = n || o || {};
+      const classes =
+        (Array.isArray(ref.classes) ? ref.classes.map((c: any) => c.name).filter(Boolean).join(', ') : '') ||
+        (Array.isArray(ref.class_names) ? ref.class_names.join(', ') : '');
+      const year = ref.academic_year || '';
+      const term = ref.term || '';
+      return joinParts([
+        'Updated fee structure',
+        classes ? `for ${classes}` : '',
+        year || term ? `(${[year, term].filter(Boolean).join(' ')})` : '',
+      ]) || 'Updated fee structure';
+    }
+
+    case 'FEE_STRUCTURE_DELETED': {
+      const ref = o || {};
+      const classes =
+        (Array.isArray(ref.classes) ? ref.classes.map((c: any) => c.name).filter(Boolean).join(', ') : '') ||
+        (Array.isArray(ref.class_names) ? ref.class_names.join(', ') : '');
+      const year = ref.academic_year || '';
+      const term = ref.term || '';
+      return joinParts([
+        'Deleted fee structure',
+        classes ? `for ${classes}` : '',
+        year || term ? `(${[year, term].filter(Boolean).join(' ')})` : '',
+      ]) || 'Deleted fee structure';
+    }
+
+    case 'DISCOUNT_TYPE_CREATED':
+    case 'DISCOUNT_TYPE_UPDATED': {
+      const ref = n || o || {};
+      const name = ref.name || '';
+      const value =
+        ref.value != null
+          ? ref.type === 'percentage'
+            ? `${ref.value}%`
+            : fmtAmount(ref.value)
+          : '';
+      const verb = action.includes('UPDATED') ? 'Updated' : 'Created';
+      return joinParts([
+        `${verb} discount type`,
+        name ? `"${name}"` : '',
+        value ? `(${value})` : '',
+      ]);
+    }
+
+    case 'DISCOUNT_TYPE_DELETED': {
+      const ref = o || {};
+      const name = ref.name || '';
+      return `Deleted discount type${name ? ` "${name}"` : ''}`;
+    }
+
+    case 'STUDENT_DISCOUNT_ASSIGNED': {
+      if (!n) return 'Assigned student discount';
+      return joinParts([
+        `Assigned discount #${n.discountTypeId ?? '?'}`,
+        `to student #${n.studentId ?? '?'}`,
+        n.academicYear || n.term ? `(${[n.academicYear, n.term].filter(Boolean).join(' ')})` : '',
+      ]);
+    }
+
+    case 'STUDENT_DISCOUNT_REMOVED': {
+      const ref = o || {};
+      return joinParts([
+        'Removed discount',
+        ref.discount_type_id ? `#${ref.discount_type_id}` : '',
+        ref.student_id ? `from student #${ref.student_id}` : '',
+      ]) || 'Removed student discount';
+    }
+
+    default:
+      return '—';
+  }
+};
 
 // ─── Helper: Export to PDF ───────────────────────────────────────────────────
 const exportAuditLogsToPDF = (logs: AuditLog[], filters: any) => {
@@ -54,24 +209,56 @@ const exportAuditLogsToPDF = (logs: AuditLog[], filters: any) => {
   doc.setFontSize(10);
   doc.text(subtitle, pageWidth / 2, 60, { align: 'center' });
 
-  const headers = ['Date/Time', 'User', 'Action', 'Entity', 'IP Address', 'Details'];
-  const rows = logs.map(log => [
+  const headers = ['Date/Time', 'User', 'Action', 'Entity', 'Details', 'IP'];
+
+  const rows = logs.map((log) => [
     new Date(log.created_at).toLocaleString(),
     (log as any).username || (log as any).user_username || 'System',
     log.action.replace(/_/g, ' '),
     `${log.entity_type} #${log.entity_id}`,
+    formatAuditDetails(log),       // long text — will wrap
     log.ip_address || 'N/A',
-    (log.old_data ? `Old: ${JSON.stringify(log.old_data).slice(0, 60)}...` : '') +
-    (log.new_data ? ` | New: ${JSON.stringify(log.new_data).slice(0, 60)}...` : '')
   ]);
 
+  // A4 landscape width = 842pt. With 20pt margins → usable width 802pt.
+  // Distribute: Date 100 | User 75 | Action 90 | Entity 80 | Details 380 | IP 77
   autoTable(doc, {
     head: [headers],
     body: rows,
     startY: 80,
-    styles: { fontSize: 8 },
-    headStyles: { fillColor: [41, 128, 185], textColor: [255, 255, 255] },
-    margin: { left: 30, right: 30 },
+    styles: {
+      fontSize: 7,           // smaller font so more text fits per cell
+      cellPadding: 3,
+      overflow: 'linebreak', // wrap long text across lines inside the cell
+      valign: 'top',
+    },
+    headStyles: {
+      fillColor: [41, 128, 185],
+      textColor: [255, 255, 255],
+      fontSize: 8,
+      fontStyle: 'bold',
+    },
+    columnStyles: {
+      0: { cellWidth: 100 },
+      1: { cellWidth: 75 },
+      2: { cellWidth: 90 },
+      3: { cellWidth: 80 },
+      4: { cellWidth: 380 }, // Details gets the most space
+      5: { cellWidth: 77 },
+    },
+    margin: { left: 20, right: 20 },
+    didDrawPage: () => {
+      // (optional) footer with page number
+      const pageCount = doc.getNumberOfPages();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      doc.setFontSize(8);
+      doc.text(
+        `Page ${doc.getCurrentPageInfo().pageNumber} of ${pageCount}`,
+        pageWidth - 40,
+        pageHeight - 15,
+        { align: 'right' }
+      );
+    },
   });
 
   doc.save(`audit_logs_${new Date().toISOString().slice(0, 10)}.pdf`);
@@ -120,25 +307,28 @@ const AuditLogs: React.FC = () => {
   const [rowsPerPage, setRowsPerPage] = useState(50);
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchLogs = useCallback(async (showLoading = true) => {
-    if (showLoading) setFetching(true);
-    setError(null);
-    try {
-      const result = await getAuditLogs({
-        ...filters,
-        limit: rowsPerPage,
-        offset: page * rowsPerPage
-      });
-      setLogs(result?.logs || []);
-      setTotal(result?.total || 0);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load audit logs');
-      setLogs([]);
-      setTotal(0);
-    } finally {
-      if (showLoading) setFetching(false);
-    }
-  }, [filters, page, rowsPerPage, getAuditLogs]);
+  const fetchLogs = useCallback(
+    async (showLoading = true) => {
+      if (showLoading) setFetching(true);
+      setError(null);
+      try {
+        const result = await getAuditLogs({
+          ...filters,
+          limit: rowsPerPage,
+          offset: page * rowsPerPage,
+        });
+        setLogs(result?.logs || []);
+        setTotal(result?.total || 0);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load audit logs');
+        setLogs([]);
+        setTotal(0);
+      } finally {
+        if (showLoading) setFetching(false);
+      }
+    },
+    [filters, page, rowsPerPage, getAuditLogs]
+  );
 
   const debouncedFetch = useCallback(() => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
@@ -147,17 +337,21 @@ const AuditLogs: React.FC = () => {
 
   useEffect(() => {
     fetchLogs(true);
-    return () => { if (debounceTimer.current) clearTimeout(debounceTimer.current); };
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
   }, [page, rowsPerPage]);
 
   useEffect(() => {
     if (page !== 0) setPage(0);
     else debouncedFetch();
-    return () => { if (debounceTimer.current) clearTimeout(debounceTimer.current); };
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
   }, [filters]);
 
   const handleFilterChange = (field: string, value: any) => {
-    setFilters(prev => ({ ...prev, [field]: value }));
+    setFilters((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleChangePage = (event: unknown, newPage: number) => setPage(newPage);
@@ -176,12 +370,30 @@ const AuditLogs: React.FC = () => {
     return 'default';
   };
 
-  // ─── Resolve the display name for a log entry ───
-  // Prefers `username` (new field), falls back to `user_username` (old type),
-  // then 'System' if none exist.
   const getUserDisplayName = (log: AuditLog): string => {
     const anyLog = log as any;
     return anyLog.username || anyLog.user_username || 'System';
+  };
+
+  // Tooltip with raw JSON — small info icon next to the details
+  const RawJsonTooltip = ({ log }: { log: AuditLog }) => {
+    const anyLog = log as any;
+    const raw: any = {};
+    if (anyLog.old_data) raw.old = anyLog.old_data;
+    if (anyLog.new_data) raw.new = anyLog.new_data;
+    return (
+      <Tooltip
+        title={
+          <pre style={{ margin: 0, fontSize: 11, maxWidth: 380, whiteSpace: 'pre-wrap' }}>
+            {JSON.stringify(raw, null, 2)}
+          </pre>
+        }
+        placement="left"
+        arrow
+      >
+        <span style={{ cursor: 'help', color: 'inherit' }}>ⓘ</span>
+      </Tooltip>
+    );
   };
 
   if (loading && logs.length === 0) {
@@ -234,8 +446,10 @@ const AuditLogs: React.FC = () => {
                 onChange={(e) => handleFilterChange('action', e.target.value)}
               >
                 <MenuItem value="">All Actions</MenuItem>
-                {actionOptions.map(action => (
-                  <MenuItem key={action} value={action}>{action.replace(/_/g, ' ')}</MenuItem>
+                {actionOptions.map((action) => (
+                  <MenuItem key={action} value={action}>
+                    {action.replace(/_/g, ' ')}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -249,8 +463,10 @@ const AuditLogs: React.FC = () => {
                 onChange={(e) => handleFilterChange('entityType', e.target.value)}
               >
                 <MenuItem value="">All Entities</MenuItem>
-                {entityOptions.map(entity => (
-                  <MenuItem key={entity} value={entity}>{entity.replace(/_/g, ' ')}</MenuItem>
+                {entityOptions.map((entity) => (
+                  <MenuItem key={entity} value={entity}>
+                    {entity.replace(/_/g, ' ')}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -280,12 +496,16 @@ const AuditLogs: React.FC = () => {
         </Grid>
       </Paper>
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
 
       {/* Main Content Area */}
       <Paper elevation={isMobile ? 0 : 3} sx={{ bgcolor: isMobile ? 'transparent' : 'background.paper' }}>
         {isMobile ? (
-          /* Mobile View: Stacked Cards */
+          /* ═══════════ MOBILE VIEW ═══════════ */
           <Stack spacing={2}>
             {fetching && logs.length === 0 ? (
               <Box display="flex" justifyContent="center" py={4}>
@@ -315,43 +535,29 @@ const AuditLogs: React.FC = () => {
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
                       User: {getUserDisplayName(log)}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Entity: {log.entity_type} #{log.entity_id}
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      {formatAuditDetails(log)}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary" display="block">
-                      IP: {log.ip_address || 'N/A'}
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                      Entity: {log.entity_type} #{log.entity_id} · IP: {log.ip_address || 'N/A'}
                     </Typography>
-
-                    {(log.old_data || log.new_data) && (
-                      <>
-                        <Divider sx={{ my: 1 }} />
-                        <Box sx={{ fontSize: '0.75rem', bgcolor: 'action.hover', p: 1, borderRadius: 1 }}>
-                          {log.old_data && (
-                            <div><strong>Old:</strong> {JSON.stringify(log.old_data)}</div>
-                          )}
-                          {log.new_data && (
-                            <div><strong>New:</strong> {JSON.stringify(log.new_data)}</div>
-                          )}
-                        </Box>
-                      </>
-                    )}
                   </CardContent>
                 </Card>
               ))
             )}
           </Stack>
         ) : (
-          /* Desktop View: Full Table */
+          /* ═══════════ DESKTOP VIEW ═══════════ */
           <TableContainer>
-            <Table>
+            <Table sx={{ tableLayout: 'fixed', width: '100%' }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: 'action.hover' }}>
-                  <TableCell sx={{ fontWeight: 600 }}>Date/Time</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>User</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Action</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Entity</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>IP Address</TableCell>
+                  <TableCell sx={{ fontWeight: 600, width: '140px' }}>Date/Time</TableCell>
+                  <TableCell sx={{ fontWeight: 600, width: '110px' }}>User</TableCell>
+                  <TableCell sx={{ fontWeight: 600, width: '120px' }}>Action</TableCell>
+                  <TableCell sx={{ fontWeight: 600, width: '140px' }}>Entity</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Details</TableCell>
+                  <TableCell sx={{ fontWeight: 600, width: '120px' }}>IP Address</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -372,22 +578,42 @@ const AuditLogs: React.FC = () => {
                 ) : (
                   logs.map((log) => (
                     <TableRow key={log.id} hover>
-                      <TableCell>{new Date(log.created_at).toLocaleString()}</TableCell>
-                      <TableCell>{getUserDisplayName(log)}</TableCell>
-                      <TableCell>
+                      <TableCell sx={{ fontSize: '0.8rem', verticalAlign: 'top' }}>
+                        {new Date(log.created_at).toLocaleString()}
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.8rem', verticalAlign: 'top', wordBreak: 'break-word' }}>
+                        {getUserDisplayName(log)}
+                      </TableCell>
+                      <TableCell sx={{ verticalAlign: 'top' }}>
                         <Chip
                           label={log.action.replace(/_/g, ' ')}
                           color={getActionColor(log.action)}
                           size="small"
+                          sx={{ fontSize: '0.7rem', height: 22 }}
                         />
                       </TableCell>
-                      <TableCell>{log.entity_type} #{log.entity_id}</TableCell>
-                      <TableCell>{log.ip_address || 'N/A'}</TableCell>
-                      <TableCell>
-                        <Box sx={{ maxWidth: 220, maxHeight: 60, overflow: 'auto', fontSize: '0.75rem' }}>
-                          {log.old_data && <div>Old: {JSON.stringify(log.old_data).slice(0, 50)}...</div>}
-                          {log.new_data && <div>New: {JSON.stringify(log.new_data).slice(0, 50)}...</div>}
-                        </Box>
+                      <TableCell sx={{ fontSize: '0.8rem', verticalAlign: 'top', wordBreak: 'break-word' }}>
+                        {log.entity_type} #{log.entity_id}
+                      </TableCell>
+                      <TableCell sx={{ verticalAlign: 'top' }}>
+                        {/* ─── Wrapping details — no scroll, no ellipsis ─── */}
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontSize: '0.78rem',
+                            lineHeight: 1.35,
+                            whiteSpace: 'normal',
+                            wordBreak: 'break-word',
+                            color: 'text.primary',
+                          }}
+                        >
+                          {formatAuditDetails(log)}
+                          {' '}
+                          <RawJsonTooltip log={log} />
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ fontSize: '0.75rem', verticalAlign: 'top', color: 'text.secondary' }}>
+                        {log.ip_address || 'N/A'}
                       </TableCell>
                     </TableRow>
                   ))

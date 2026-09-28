@@ -136,7 +136,7 @@ exports.updateFeeStructure = async (req, res) => {
       const newStructure = await FeeModel.findFeeStructureByIdWithComponents(id, schoolId);
       await logAudit({
         userId: req.user.id,
-      username: req.user.username,
+        username: req.user.username,
         action: 'FEE_STRUCTURE_UPDATED',
         entityType: 'fee_structure',
         entityId: id,
@@ -168,7 +168,7 @@ exports.deleteFeeStructure = async (req, res) => {
     if (deletedRows > 0) {
       await logAudit({
         userId: req.user.id,
-      username: req.user.username,
+        username: req.user.username,
         action: 'FEE_STRUCTURE_DELETED',
         entityType: 'fee_structure',
         entityId: id,
@@ -320,7 +320,17 @@ exports.recordPayment = async (req, res) => {
       action: 'PAYMENT_CREATED',
       entityType: 'payment',
       entityId: paymentId,
-      newData: { student_id: student.id, student_name: student.name, amount_paid, payment_date, payment_method, receipt_number: receiptNumber, discount_id: studentDiscountId },
+      newData: {
+        student_id: student.id,
+        student_name: student.name,
+        student_class: student.class_name,
+        component_name: targetComponent.name,
+        amount_paid,
+        payment_date,
+        payment_method,
+        receipt_number: receiptNumber,
+        discount_id: studentDiscountId,
+      },
       ipAddress: getClientIp(req),
       userAgent: getUserAgent(req),
       schoolId,
@@ -651,9 +661,14 @@ exports.createDiscountType = async (req, res) => {
     const id = await discountService.createDiscountType({ name, type, value, description }, schoolId);
     await logAudit({
       userId: req.user.id,
-      username: req.user.username, action: 'DISCOUNT_TYPE_CREATED', entityType: 'discount_type', entityId: id,
+      username: req.user.username,
+      action: 'DISCOUNT_TYPE_CREATED',
+      entityType: 'discount_type',
+      entityId: id,
       newData: { name, type, value, description },
-      ipAddress: getClientIp(req), userAgent: getUserAgent(req), schoolId,
+      ipAddress: getClientIp(req),
+      userAgent: getUserAgent(req),
+      schoolId,
     });
     res.status(201).json({ message: 'Discount type created.', id });
   } catch (error) { handleControllerError(res, error, 'Failed to create discount type.'); }
@@ -671,9 +686,15 @@ exports.updateDiscountType = async (req, res) => {
     if (!success) throw new Error('Discount type not found.');
     await logAudit({
       userId: req.user.id,
-      username: req.user.username, action: 'DISCOUNT_TYPE_UPDATED', entityType: 'discount_type', entityId: id,
-      oldData: oldType, newData: { name, type, value, description },
-      ipAddress: getClientIp(req), userAgent: getUserAgent(req), schoolId,
+      username: req.user.username,
+      action: 'DISCOUNT_TYPE_UPDATED',
+      entityType: 'discount_type',
+      entityId: id,
+      oldData: oldType,
+      newData: { name, type, value, description },
+      ipAddress: getClientIp(req),
+      userAgent: getUserAgent(req),
+      schoolId,
     });
     res.status(200).json({ message: 'Discount type updated.' });
   } catch (error) { handleControllerError(res, error, 'Failed to update discount type.'); }
@@ -689,9 +710,14 @@ exports.deleteDiscountType = async (req, res) => {
     if (!success) throw new Error('Discount type not found.');
     await logAudit({
       userId: req.user.id,
-      username: req.user.username, action: 'DISCOUNT_TYPE_DELETED', entityType: 'discount_type', entityId: id,
+      username: req.user.username,
+      action: 'DISCOUNT_TYPE_DELETED',
+      entityType: 'discount_type',
+      entityId: id,
       oldData: oldType,
-      ipAddress: getClientIp(req), userAgent: getUserAgent(req), schoolId,
+      ipAddress: getClientIp(req),
+      userAgent: getUserAgent(req),
+      schoolId,
     });
     res.status(200).json({ message: 'Discount type deleted.' });
   } catch (error) { handleControllerError(res, error, 'Failed to delete discount type.'); }
@@ -728,9 +754,14 @@ exports.assignStudentDiscount = async (req, res) => {
     }, schoolId);
     await logAudit({
       userId: req.user.id,
-      username: req.user.username, action: 'STUDENT_DISCOUNT_ASSIGNED', entityType: 'student_discount', entityId: id,
+      username: req.user.username,
+      action: 'STUDENT_DISCOUNT_ASSIGNED',
+      entityType: 'student_discount',
+      entityId: id,
       newData: { studentId, discountTypeId, academicYear, term, notes },
-      ipAddress: getClientIp(req), userAgent: getUserAgent(req), schoolId,
+      ipAddress: getClientIp(req),
+      userAgent: getUserAgent(req),
+      schoolId,
     });
     res.status(201).json({ message: 'Discount assigned to student.', id });
   } catch (error) { handleControllerError(res, error, 'Failed to assign discount.'); }
@@ -749,9 +780,14 @@ exports.removeStudentDiscount = async (req, res) => {
     if (!success) throw new Error('Failed to remove.');
     await logAudit({
       userId: req.user.id,
-      username: req.user.username, action: 'STUDENT_DISCOUNT_REMOVED', entityType: 'student_discount', entityId: id,
+      username: req.user.username,
+      action: 'STUDENT_DISCOUNT_REMOVED',
+      entityType: 'student_discount',
+      entityId: id,
       oldData: existing.rows[0],
-      ipAddress: getClientIp(req), userAgent: getUserAgent(req), schoolId,
+      ipAddress: getClientIp(req),
+      userAgent: getUserAgent(req),
+      schoolId,
     });
     res.status(200).json({ message: 'Student discount removed.' });
   } catch (error) { handleControllerError(res, error, 'Failed to remove student discount.'); }
