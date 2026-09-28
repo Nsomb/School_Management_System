@@ -78,7 +78,7 @@ const ClassListController = {
       const school = await getSchoolConfig(req.schoolId);
       const doc = new PDFDocument({ margin: 30, size: 'A4', layout: 'portrait', bufferPages: true });
       const chunks = [];
-      doc.on('data', c => chunks.push(c));
+      doc.on('data', (c) => chunks.push(c));
       doc.on('end', () => {
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="ClassList_${class_name}.pdf"`);
@@ -91,8 +91,8 @@ const ClassListController = {
       const academicYear = getCameroonAcademicYear();
 
       const cols = [
-        { id: 'num', label: '#', width: 20, align: 'center' },
-        { id: 'name', label: 'FULL NAME', width: 215, align: 'left' },
+        { id: 'num', label: '#', width: 22, align: 'center' },
+        { id: 'name', label: 'FULL NAME', width: 213, align: 'left' },
         { id: 'sex', label: 'SEX', width: 25, align: 'center' },
         { id: 'dob', label: 'DOB', width: 65, align: 'center' },
         { id: 'e1', label: 'E1', width: 35, align: 'center' },
@@ -104,11 +104,15 @@ const ClassListController = {
       ];
 
       const drawTableHeader = (startY) => {
-        doc.rect(marginX, startY, usableWidth, 16).fill('#1a4b8c');
-        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#FFFFFF');
+        doc.rect(marginX, startY, usableWidth, 16).fillColor('#FFFFFF').fill();
+        doc.rect(marginX, startY, usableWidth, 16).strokeColor('#000000').lineWidth(0.8).stroke();
+        doc.fontSize(8).font('Helvetica-Bold').fillColor('#000000');
         let x = marginX;
-        cols.forEach(c => {
+        cols.forEach((c) => {
           doc.text(c.label, x + 2, startY + 4, { width: c.width - 4, align: c.align });
+          if (x !== marginX) {
+            doc.moveTo(x, startY).lineTo(x, startY + 16).strokeColor('#000000').lineWidth(0.6).stroke();
+          }
           x += c.width;
         });
         return startY + 16;
@@ -124,7 +128,9 @@ const ClassListController = {
           const newY = addClassHeader(doc, school, `${headerSubtitle} (Continuation)`);
           y = drawTableHeader(newY + 8);
         }
-        if (idx % 2 === 0) doc.rect(marginX, y, usableWidth, rowHeight).fill('#F8F9FA');
+
+        // Black grid row borders
+        doc.rect(marginX, y, usableWidth, rowHeight).strokeColor('#000000').lineWidth(0.6).stroke();
 
         const dobText = student.date_of_birth ? new Date(student.date_of_birth).toLocaleDateString('en-GB') : '-';
         const sexText = student.sex ? student.sex.charAt(0).toUpperCase() : '-';
@@ -132,23 +138,23 @@ const ClassListController = {
         const rowData = [String(idx + 1), nameText, sexText, dobText, '', '', '', '', '', ''];
 
         let cellX = marginX;
-        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#222222');
+        doc.fontSize(8).font('Helvetica').fillColor('#000000');
         cols.forEach((c, i) => {
           const text = rowData[i];
           if (text) doc.text(text, cellX + 3, y + 4, { width: c.width - 6, align: c.align, ellipsis: true });
-          doc.strokeColor('#DCDCDC').lineWidth(0.5).moveTo(cellX, y).lineTo(cellX, y + rowHeight).stroke();
+          if (i > 0) {
+            doc.moveTo(cellX, y).lineTo(cellX, y + rowHeight).strokeColor('#000000').lineWidth(0.6).stroke();
+          }
           cellX += c.width;
         });
-        doc.strokeColor('#DCDCDC').lineWidth(0.5).moveTo(cellX, y).lineTo(cellX, y + rowHeight).stroke();
-        doc.strokeColor('#E0E0E0').lineWidth(0.5).moveTo(marginX, y + rowHeight).lineTo(marginX + usableWidth, y + rowHeight).stroke();
+
         y += rowHeight;
       });
 
       const range = doc.bufferedPageRange();
       for (let i = range.start; i < range.start + range.count; i++) {
         doc.switchToPage(i);
-        doc.strokeColor('#CCCCCC').lineWidth(0.5).moveTo(marginX, 800).lineTo(marginX + usableWidth, 800).stroke();
-        doc.fontSize(6).font('Helvetica-BoldOblique').fillColor('#666666')
+        doc.fontSize(7).font('Helvetica-BoldOblique').fillColor('#000000')
           .text(`Class: ${class_name}  •  Total Students: ${students.length}  •  Academic Year: ${academicYear}`,
             marginX, 806, { width: usableWidth / 2, align: 'left' });
         doc.text(`Page ${i + 1} of ${range.count}`,

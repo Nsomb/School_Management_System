@@ -28,14 +28,13 @@ const resolveEvaluationType = (evaluationType, term) => {
   if (!evals) return evaluationType;
   const match = evaluationType.match(/EVA(\d+)/i);
   if (match) {
-    const idx = parseInt(match[1]) - 1;
+    const idx = parseInt(match[1], 10) - 1;
     if (evals[idx]) return evals[idx];
   }
   return evaluationType;
 };
 
 // ==================== Helpers ====================
-
 const getCameroonAcademicYear = (providedYear) => {
   if (providedYear && providedYear !== 'N/A') return providedYear;
   const now = new Date();
@@ -46,6 +45,14 @@ const getCameroonAcademicYear = (providedYear) => {
     : `${currentYear - 1}/${currentYear}`;
 };
 
+/**
+ * Build student × subject matrix.
+ *
+ *  - Subject columns keep RAW marks (as entered by the teacher).
+ *  - TOTAL = Σ(mark × coefficient)   — weighted points (matches report card).
+ *  - AVG   = TOTAL / Σ(coefficient)  — weighted average /20 (matches report card).
+ *  - RANK  = competition rank by AVG (1, 2, 2, 4, …) — matches report card.
+ */
 const buildStudentMarksMatrix = (students, subjects, marksData) => {
   const studentMap = students.map((s) => ({
     student_id: s.id,
@@ -54,9 +61,7 @@ const buildStudentMarksMatrix = (students, subjects, marksData) => {
   }));
 
   studentMap.forEach((stu) => {
-    subjects.forEach((sub) => {
-      stu.marksById[sub.id] = null;
-    });
+    subjects.forEach((sub) => { stu.marksById[sub.id] = null; });
   });
 
   marksData.forEach((mark) => {
@@ -69,30 +74,70 @@ const buildStudentMarksMatrix = (students, subjects, marksData) => {
     }
   });
 
-  const finalStudentMap = studentMap.map((stu) => {
+  const withTotals = studentMap.map((stu) => {
     const marksByName = {};
+    let total = 0;
+    let totalCoef = 0;
+
     subjects.forEach((sub) => {
-      marksByName[sub.name] = stu.marksById[sub.id] !== undefined ? stu.marksById[sub.id] : null;
+      const mark = stu.marksById[sub.id];
+      marksByName[sub.name] = mark;
+
+      if (mark !== null && mark !== undefined && !isNaN(mark)) {
+        const coef = parseFloat(sub.coefficient) || 1;
+        total += mark * coef;
+        totalCoef += coef;
+      }
     });
+
+    const avg = totalCoef > 0 ? total / totalCoef : 0;
+
     return {
       student_id: stu.student_id,
       student_name: stu.student_name,
       marks: marksByName,
+      total: Math.round(total * 100) / 100,
+      avg: Math.round(avg * 100) / 100,
+      totalCoef,
     };
   });
 
-  return finalStudentMap.sort((a, b) => a.student_name.localeCompare(b.student_name));
+  // competition rank by AVG (4-decimal rounding to avoid float ties)
+  const sorted = [...withTotals].sort((a, b) => {
+    const aAvg = Number(parseFloat(a.avg || 0).toFixed(4));
+    const bAvg = Number(parseFloat(b.avg || 0).toFixed(4));
+    return bAvg - aAvg;
+  });
+
+  const rankMap = {};
+  let currentRank = 1;
+  let previousAvg = null;
+  sorted.forEach((s, idx) => {
+    const thisAvg = Number(parseFloat(s.avg || 0).toFixed(4));
+    if (previousAvg !== null && thisAvg !== previousAvg) {
+      currentRank = idx + 1;
+    }
+    rankMap[s.student_id] = currentRank;
+    previousAvg = thisAvg;
+  });
+
+  withTotals.forEach((s) => { s.rank = rankMap[s.student_id]; });
+
+  return withTotals.sort((a, b) => a.student_name.localeCompare(b.student_name));
 };
 
-const formatSubjectCode = (subjectName, maxLen = 8) => {
+// Show the coefficient in the header so it's clear why TOTAL ≠ plain sum
+const formatSubjectCode = (subjectName, coefficient, maxLen = 10) => {
   if (!subjectName) return 'SUBJ';
-  const cleanStr = subjectName.trim().toUpperCase();
-  if (cleanStr.length <= maxLen) return cleanStr;
-  return cleanStr.substring(0, maxLen - 1) + '.';
+  const clean = subjectName.trim().toUpperCase();
+  const coefLabel = coefficient ? `(${coefficient})` : '';
+  const available = Math.max(3, maxLen - coefLabel.length);
+  let abbr = clean;
+  if (clean.length > available) abbr = clean.substring(0, available - 1) + '.';
+  return `${abbr}${coefLabel}`;
 };
 
 // ==================== PDF Generation ====================
-
 const generateClassReportPDF = (students, subjects, metadata, school) => {
   return new Promise((resolve, reject) => {
     try {
@@ -110,14 +155,18 @@ const generateClassReportPDF = (students, subjects, metadata, school) => {
 
       const marginX = 25;
       const usableWidth = doc.page.width - 2 * marginX;
-      const headerHeight = 95;
+      const headerHeight = 105;
       const bottomLimit = doc.page.height - 45;
 
       const rollColWidth = 22;
-      const nameColWidth = 185;
-      const fixedTotalWidth = rollColWidth + nameColWidth;
-      const remainingWidth = usableWidth - fixedTotalWidth;
+      const nameColWidth = 155;
+      const totalColWidth = 52;
+      const avgColWidth = 42;
+      const rankColWidth = 34;
+      const fixedTotalWidth =
+        rollColWidth + nameColWidth + totalColWidth + avgColWidth + rankColWidth;
 
+      const remainingWidth = usableWidth - fixedTotalWidth;
       const MIN_SUBJECT_WIDTH = 26;
       const subjectColWidth = Math.max(
         MIN_SUBJECT_WIDTH,
@@ -126,7 +175,7 @@ const generateClassReportPDF = (students, subjects, metadata, school) => {
 
       const drawRotatedText = (text, cellX, cellY, cellWidth, cellHeight) => {
         doc.save();
-        doc.translate(cellX + cellWidth / 2 - 3, cellY + cellHeight - 6);
+        doc.translate(cellX + cellWidth / 2 - 4, cellY + cellHeight - 6);
         doc.rotate(-90);
         doc.fontSize(8).font('Helvetica-Bold').fillColor('#000000');
         doc.text(text, 0, 0, {
@@ -138,35 +187,59 @@ const generateClassReportPDF = (students, subjects, metadata, school) => {
       };
 
       const drawTableHeader = (startY) => {
-        doc.rect(marginX, startY, usableWidth, headerHeight).fillColor('#FFFFFF').fill();
-        doc.rect(marginX, startY, usableWidth, headerHeight).strokeColor('#000000').lineWidth(1).stroke();
+        doc.rect(marginX, startY, usableWidth, headerHeight)
+          .fillColor('#FFFFFF').fill();
+        doc.rect(marginX, startY, usableWidth, headerHeight)
+          .strokeColor('#000000').lineWidth(1).stroke();
 
         let currX = marginX;
 
+        // #
         doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#000000');
         doc.text('#', currX + 1, startY + headerHeight - 16, {
           width: rollColWidth - 2, align: 'center',
         });
-        doc.moveTo(currX + rollColWidth, startY)
-          .lineTo(currX + rollColWidth, startY + headerHeight)
-          .strokeColor('#000000').lineWidth(0.6).stroke();
         currX += rollColWidth;
+        doc.moveTo(currX, startY).lineTo(currX, startY + headerHeight)
+          .strokeColor('#000000').lineWidth(0.6).stroke();
 
+        // STUDENT NAME
         doc.text('STUDENT NAME', currX + 4, startY + headerHeight - 16, {
           width: nameColWidth - 8, align: 'left',
         });
-        doc.moveTo(currX + nameColWidth, startY)
-          .lineTo(currX + nameColWidth, startY + headerHeight)
-          .strokeColor('#000000').lineWidth(0.6).stroke();
         currX += nameColWidth;
+        doc.moveTo(currX, startY).lineTo(currX, startY + headerHeight)
+          .strokeColor('#000000').lineWidth(0.6).stroke();
 
+        // SUBJECTS — with coefficient in parentheses
         subjects.forEach((subj) => {
-          const code = formatSubjectCode(subj.name, 8);
+          const code = formatSubjectCode(subj.name, subj.coefficient);
           drawRotatedText(code, currX, startY, subjectColWidth, headerHeight);
-          doc.moveTo(currX + subjectColWidth, startY)
-            .lineTo(currX + subjectColWidth, startY + headerHeight)
-            .strokeColor('#000000').lineWidth(0.6).stroke();
           currX += subjectColWidth;
+          doc.moveTo(currX, startY).lineTo(currX, startY + headerHeight)
+            .strokeColor('#000000').lineWidth(0.6).stroke();
+        });
+
+        // TOTAL
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#000000');
+        doc.text('TOTAL', currX + 1, startY + headerHeight - 16, {
+          width: totalColWidth - 2, align: 'center',
+        });
+        currX += totalColWidth;
+        doc.moveTo(currX, startY).lineTo(currX, startY + headerHeight)
+          .strokeColor('#000000').lineWidth(0.6).stroke();
+
+        // AVG
+        doc.text('AVG', currX + 1, startY + headerHeight - 16, {
+          width: avgColWidth - 2, align: 'center',
+        });
+        currX += avgColWidth;
+        doc.moveTo(currX, startY).lineTo(currX, startY + headerHeight)
+          .strokeColor('#000000').lineWidth(0.6).stroke();
+
+        // RANK
+        doc.text('RANK', currX + 1, startY + headerHeight - 16, {
+          width: rankColWidth - 2, align: 'center',
         });
 
         return startY + headerHeight;
@@ -185,9 +258,8 @@ const generateClassReportPDF = (students, subjects, metadata, school) => {
           y = drawTableHeader(nextHeaderY + 8);
         }
 
-        if (index % 2 === 0) {
-          doc.rect(marginX, y, usableWidth, rowHeight).fillColor('#F7F7F7').fill();
-        }
+        doc.rect(marginX, y, usableWidth, rowHeight)
+          .strokeColor('#000000').lineWidth(0.6).stroke();
 
         let xPos = marginX;
         doc.fontSize(8).font('Helvetica').fillColor('#000000');
@@ -196,16 +268,13 @@ const generateClassReportPDF = (students, subjects, metadata, school) => {
           width: rollColWidth - 2, align: 'center', lineBreak: false,
         });
         xPos += rollColWidth;
-        doc.moveTo(xPos, y).lineTo(xPos, y + rowHeight)
-          .strokeColor('#000000').lineWidth(0.4).stroke();
 
         doc.font('Helvetica-Bold').text(student.student_name, xPos + 4, y + rowHeight / 2 - 4, {
           width: nameColWidth - 8, lineBreak: false, ellipsis: true,
         });
         xPos += nameColWidth;
-        doc.moveTo(xPos, y).lineTo(xPos, y + rowHeight)
-          .strokeColor('#000000').lineWidth(0.4).stroke();
 
+        // SUBJECT MARKS — RAW values, as entered
         subjects.forEach((subj) => {
           const mark = student.marks[subj.name];
           const markText = mark !== null && mark !== undefined ? String(mark) : '-';
@@ -220,25 +289,56 @@ const generateClassReportPDF = (students, subjects, metadata, school) => {
             width: subjectColWidth, align: 'center', lineBreak: false,
           });
           xPos += subjectColWidth;
-          doc.moveTo(xPos, y).lineTo(xPos, y + rowHeight)
-            .strokeColor('#000000').lineWidth(0.4).stroke();
         });
 
-        doc.moveTo(marginX, y + rowHeight)
-          .lineTo(marginX + usableWidth, y + rowHeight)
-          .strokeColor('#000000').lineWidth(0.4).stroke();
+        // TOTAL — weighted
+        doc.font('Helvetica-Bold').text(
+          student.total != null ? student.total.toFixed(2) : '-',
+          xPos, y + rowHeight / 2 - 4,
+          { width: totalColWidth, align: 'center', lineBreak: false }
+        );
+        xPos += totalColWidth;
+
+        // AVG — weighted
+        doc.font('Helvetica-Bold').text(
+          student.avg != null ? student.avg.toFixed(2) : '-',
+          xPos, y + rowHeight / 2 - 4,
+          { width: avgColWidth, align: 'center', lineBreak: false }
+        );
+        xPos += avgColWidth;
+
+        // RANK
+        doc.font('Helvetica-Bold').text(
+          String(student.rank || '-'),
+          xPos, y + rowHeight / 2 - 4,
+          { width: rankColWidth, align: 'center', lineBreak: false }
+        );
+
+        // Vertical grid lines
+        let vx = marginX + rollColWidth;
+        doc.moveTo(vx, y).lineTo(vx, y + rowHeight).strokeColor('#000000').lineWidth(0.6).stroke();
+
+        vx += nameColWidth;
+        doc.moveTo(vx, y).lineTo(vx, y + rowHeight).strokeColor('#000000').lineWidth(0.6).stroke();
+
+        subjects.forEach(() => {
+          vx += subjectColWidth;
+          doc.moveTo(vx, y).lineTo(vx, y + rowHeight).strokeColor('#000000').lineWidth(0.6).stroke();
+        });
+
+        vx += totalColWidth;
+        doc.moveTo(vx, y).lineTo(vx, y + rowHeight).strokeColor('#000000').lineWidth(0.6).stroke();
+
+        vx += avgColWidth;
+        doc.moveTo(vx, y).lineTo(vx, y + rowHeight).strokeColor('#000000').lineWidth(0.6).stroke();
 
         y += rowHeight;
       });
 
+      // Page footers
       const range = doc.bufferedPageRange();
       for (let i = range.start; i < range.start + range.count; i++) {
         doc.switchToPage(i);
-
-        doc.strokeColor('#000000').lineWidth(0.6)
-          .moveTo(marginX, doc.page.height - 38)
-          .lineTo(marginX + usableWidth, doc.page.height - 38)
-          .stroke();
 
         doc.fontSize(7.5).font('Helvetica-BoldOblique').fillColor('#000000')
           .text(
@@ -261,8 +361,7 @@ const generateClassReportPDF = (students, subjects, metadata, school) => {
   });
 };
 
-// ==================== Exported Controllers ====================
-
+// ==================== Controllers ====================
 exports.getClassReport = async (req, res) => {
   try {
     let className = req.query.className || req.query.class_name;

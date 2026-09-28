@@ -60,6 +60,9 @@ const formatSubjectName = (name: string): string => {
 
 const SUBJECT_COL_WIDTH = 26;
 const STUDENT_NAME_COL_WIDTH = 180;
+const TOTAL_COL_WIDTH = 60;
+const AVG_COL_WIDTH = 48;
+const RANK_COL_WIDTH = 40;
 
 export function ClassPerformance({ className, term, academicYear }: ClassPerformanceProps) {
   const [evaluationType, setEvaluationType] = useState('EVA1');
@@ -88,7 +91,11 @@ export function ClassPerformance({ className, term, academicYear }: ClassPerform
   };
 
   const totalTableWidth = reportData
-    ? STUDENT_NAME_COL_WIDTH + (reportData.subjects.length * SUBJECT_COL_WIDTH)
+    ? STUDENT_NAME_COL_WIDTH +
+      (reportData.subjects.length * SUBJECT_COL_WIDTH) +
+      TOTAL_COL_WIDTH +
+      AVG_COL_WIDTH +
+      RANK_COL_WIDTH
     : 'auto';
 
   return (
@@ -157,9 +164,7 @@ export function ClassPerformance({ className, term, academicYear }: ClassPerform
               width: `${totalTableWidth}px`,
               minWidth: `${totalTableWidth}px`,
               maxWidth: `${totalTableWidth}px`,
-              '& .MuiTableCell-root': {
-                padding: 0,
-              },
+              '& .MuiTableCell-root': { padding: 0 },
             }}
           >
             <TableHead>
@@ -177,8 +182,7 @@ export function ClassPerformance({ className, term, academicYear }: ClassPerform
                     borderBottom: '2px solid #333',
                     fontWeight: 'bold',
                     verticalAlign: 'bottom',
-                    px: 1,
-                    py: 0.5,
+                    px: 1, py: 0.5,
                     fontSize: '0.85rem',
                     lineHeight: 1.15,
                   }}
@@ -194,8 +198,7 @@ export function ClassPerformance({ className, term, academicYear }: ClassPerform
                       width: SUBJECT_COL_WIDTH,
                       minWidth: SUBJECT_COL_WIDTH,
                       maxWidth: SUBJECT_COL_WIDTH,
-                      p: 0,
-                      position: 'relative',
+                      p: 0, position: 'relative',
                       borderLeft: '1px solid #ccc',
                       borderRight: '1px solid #ccc',
                       borderBottom: '2px solid #333',
@@ -223,6 +226,64 @@ export function ClassPerformance({ className, term, academicYear }: ClassPerform
                     </Tooltip>
                   </TableCell>
                 ))}
+
+                {/* TOTAL */}
+                <TableCell
+                  align="center"
+                  sx={{
+                    width: TOTAL_COL_WIDTH,
+                    minWidth: TOTAL_COL_WIDTH,
+                    maxWidth: TOTAL_COL_WIDTH,
+                    borderLeft: '2px solid #333',
+                    borderBottom: '2px solid #333',
+                    fontWeight: 'bold',
+                    verticalAlign: 'bottom',
+                    backgroundColor: '#e8eef7',
+                    fontSize: '0.8rem',
+                    px: 0.5, py: 0.5,
+                  }}
+                >
+                  TOTAL
+                </TableCell>
+
+                {/* AVG */}
+                <TableCell
+                  align="center"
+                  sx={{
+                    width: AVG_COL_WIDTH,
+                    minWidth: AVG_COL_WIDTH,
+                    maxWidth: AVG_COL_WIDTH,
+                    borderLeft: '1px solid #ccc',
+                    borderRight: '1px solid #ccc',
+                    borderBottom: '2px solid #333',
+                    fontWeight: 'bold',
+                    verticalAlign: 'bottom',
+                    backgroundColor: '#e8eef7',
+                    fontSize: '0.8rem',
+                    px: 0.5, py: 0.5,
+                  }}
+                >
+                  AVG
+                </TableCell>
+
+                {/* RANK */}
+                <TableCell
+                  align="center"
+                  sx={{
+                    width: RANK_COL_WIDTH,
+                    minWidth: RANK_COL_WIDTH,
+                    maxWidth: RANK_COL_WIDTH,
+                    borderLeft: '1px solid #ccc',
+                    borderBottom: '2px solid #333',
+                    fontWeight: 'bold',
+                    verticalAlign: 'bottom',
+                    backgroundColor: '#e8eef7',
+                    fontSize: '0.8rem',
+                    px: 0.5, py: 0.5,
+                  }}
+                >
+                  RANK
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -243,8 +304,7 @@ export function ClassPerformance({ className, term, academicYear }: ClassPerform
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
-                      px: 1,
-                      py: 0.5,
+                      px: 1, py: 0.5,
                       fontSize: '0.8rem',
                       lineHeight: 1.15,
                     }}
@@ -252,6 +312,7 @@ export function ClassPerformance({ className, term, academicYear }: ClassPerform
                   >
                     {student.student_name}
                   </TableCell>
+
                   {reportData.subjects.map((subject) => (
                     <TableCell
                       key={subject.id}
@@ -274,6 +335,61 @@ export function ClassPerformance({ className, term, academicYear }: ClassPerform
                       {student.marks[subject.name] ?? '-'}
                     </TableCell>
                   ))}
+
+                  {/* TOTAL */}
+                  <TableCell
+                    align="center"
+                    sx={{
+                      width: TOTAL_COL_WIDTH,
+                      minWidth: TOTAL_COL_WIDTH,
+                      maxWidth: TOTAL_COL_WIDTH,
+                      fontSize: '0.8rem',
+                      fontWeight: 'bold',
+                      borderLeft: '2px solid #333',
+                      borderBottom: '1px solid #eee',
+                      backgroundColor: rowIndex % 2 === 0 ? '#eef3fb' : '#e4ecf7',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {student.total != null ? Number(student.total).toFixed(2) : '-'}
+                  </TableCell>
+
+                  {/* AVG */}
+                  <TableCell
+                    align="center"
+                    sx={{
+                      width: AVG_COL_WIDTH,
+                      minWidth: AVG_COL_WIDTH,
+                      maxWidth: AVG_COL_WIDTH,
+                      fontSize: '0.8rem',
+                      fontWeight: 'bold',
+                      borderLeft: '1px solid #eee',
+                      borderRight: '1px solid #eee',
+                      borderBottom: '1px solid #eee',
+                      backgroundColor: rowIndex % 2 === 0 ? '#eef3fb' : '#e4ecf7',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {student.avg != null ? Number(student.avg).toFixed(2) : '-'}
+                  </TableCell>
+
+                  {/* RANK */}
+                  <TableCell
+                    align="center"
+                    sx={{
+                      width: RANK_COL_WIDTH,
+                      minWidth: RANK_COL_WIDTH,
+                      maxWidth: RANK_COL_WIDTH,
+                      fontSize: '0.8rem',
+                      fontWeight: 'bold',
+                      borderLeft: '1px solid #eee',
+                      borderBottom: '1px solid #eee',
+                      backgroundColor: rowIndex % 2 === 0 ? '#eef3fb' : '#e4ecf7',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {student.rank ?? '-'}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

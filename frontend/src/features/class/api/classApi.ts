@@ -158,10 +158,20 @@ export const fetchClassStudents = async (className: string): Promise<Student[]> 
 // CLASS REPORTS
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * One row of the class marksheet.
+ *
+ *   total = Σ(mark × coef)         — total des points (weighted)
+ *   avg   = total / Σ(coef)        — moyenne pondérée (/20) — matches report card
+ *   rank  = competition rank by avg (1, 2, 2, 4, …)
+ */
 export interface ClassReportData {
   student_id: string;
   student_name: string;
   marks: { [subject: string]: number | string };
+  total: number;
+  avg: number;
+  rank: number;
 }
 
 export interface ClassReportResponse {
