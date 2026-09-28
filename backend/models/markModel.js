@@ -25,36 +25,48 @@ const MarkModel = {
   },
 
   // ─── GET MARKS FOR ONE EVALUATION ───────────────────────
-  getMarksByEvaluation: async (teacher_id, subject_id, class_id, evaluation_type, schoolId) => {
+  // ⚠️ IMPORTANT: We intentionally do NOT filter by m.teacher_id.
+  // When two teachers are assigned to the same subject + class, they
+  // must both see the same marks. The `isTeacherAssigned` check in the
+  // controller guarantees only assigned teachers reach this query.
+  // The `teacher_id` param is kept in the signature for future
+  // "current teacher" logic but is not used as a filter.
+  getMarksByEvaluation: async (_teacher_id, subject_id, class_id, evaluation_type, schoolId) => {
     const result = await db.tenantQuery(
-      `SELECT m.*, st.name AS student_name
+      `SELECT
+          m.*,
+          st.name AS student_name,
+          m.teacher_id AS marked_by_teacher_id
        FROM marks m
        JOIN students st ON m.student_id = st.id
-       WHERE m.teacher_id = $1
-         AND m.subject_id = $2
-         AND st.class_id = $3
-         AND m.evaluation_type = $4
-         AND m.school_id = $5
+       WHERE m.subject_id = $1
+         AND st.class_id = $2
+         AND m.evaluation_type = $3
+         AND m.school_id = $4
        ORDER BY st.name ASC`,
-      [teacher_id, subject_id, class_id, evaluation_type, schoolId],
+      [subject_id, class_id, evaluation_type, schoolId],
       schoolId
     );
     return result.rows;
   },
 
   // ─── GET MARKS FOR MULTIPLE EVALUATIONS (term) ─────────
-  getMarksByEvaluationTypes: async (teacher_id, subject_id, class_id, evaluationTypes, schoolId) => {
+  // ⚠️ Same rule: no teacher_id filter — marks are shared per
+  // subject+class+evaluation across all assigned teachers.
+  getMarksByEvaluationTypes: async (_teacher_id, subject_id, class_id, evaluationTypes, schoolId) => {
     const result = await db.tenantQuery(
-      `SELECT m.*, st.name as student_name
+      `SELECT
+          m.*,
+          st.name AS student_name,
+          m.teacher_id AS marked_by_teacher_id
        FROM marks m
        JOIN students st ON m.student_id = st.id
-       WHERE m.teacher_id = $1
-         AND m.subject_id = $2
-         AND st.class_id = $3
-         AND m.evaluation_type = ANY($4)
-         AND m.school_id = $5
+       WHERE m.subject_id = $1
+         AND st.class_id = $2
+         AND m.evaluation_type = ANY($3)
+         AND m.school_id = $4
        ORDER BY st.name, m.evaluation_type`,
-      [teacher_id, subject_id, class_id, evaluationTypes, schoolId],
+      [subject_id, class_id, evaluationTypes, schoolId],
       schoolId
     );
     return result.rows;
