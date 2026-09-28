@@ -4,7 +4,6 @@ import {
   Paper,
   Typography,
   Button,
-  Grid,
   Table,
   TableBody,
   TableCell,
@@ -21,11 +20,21 @@ import {
   Select,
   MenuItem,
   useTheme,
-  useMediaQuery
+  useMediaQuery,
 } from '@mui/material';
 import { Download } from '@mui/icons-material';
 import { useFeeApi } from '../hooks/useFeeApi';
 import type { Student, StudentFeeSummary } from '../types/feeTypes';
+
+// ─── Safe numeric formatter ────────────────────────────────────────────────
+// Postgres NUMERIC columns come back from the `pg` driver as strings.
+// This helper accepts anything and always returns a formatted number string.
+const safeToFixed = (value: any, decimals = 2): string => {
+  if (value === null || value === undefined || value === '') return (0).toFixed(decimals);
+  const num = Number(value);
+  if (isNaN(num)) return (0).toFixed(decimals);
+  return num.toFixed(decimals);
+};
 
 const StudentFeeStatementPage: React.FC = () => {
   const theme = useTheme();
@@ -49,7 +58,7 @@ const StudentFeeStatementPage: React.FC = () => {
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [searching, setSearching] = useState(false);
 
-  // ─── Academic Year ─────────────────────────────────────────────────────
+  // ─── Academic Year ───────────────────────────────────────────────────────
   const [academicYears, setAcademicYears] = useState<string[]>([]);
   const [selectedYear, setSelectedYear] = useState('');
 
@@ -74,7 +83,7 @@ const StudentFeeStatementPage: React.FC = () => {
       try {
         const results = await searchStudents(searchQuery);
         setSearchResults(results);
-      } catch (err) {
+      } catch {
         setSearchResults([]);
       } finally {
         setSearching(false);
@@ -82,7 +91,7 @@ const StudentFeeStatementPage: React.FC = () => {
     };
     const timer = setTimeout(fetchStudents, 300);
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, searchStudents]);
 
   const fetchSummary = async (studentId: number, year: string) => {
     try {
@@ -109,10 +118,12 @@ const StudentFeeStatementPage: React.FC = () => {
     if (!summary || !summary.studentFound) return;
     try {
       setDownloading(true);
-      const blob = await downloadStudentStatement(
-        summary.studentDetails.id,
-        summary.feeStructure?.academic_year || selectedYear
-      );
+      const anySummary = summary as any;
+      const yearFromRow =
+        anySummary.feeStructures?.[0]?.academic_year ||
+        anySummary.feeStructure?.academic_year ||
+        selectedYear;
+      const blob = await downloadStudentStatement(summary.studentDetails.id, yearFromRow);
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -126,7 +137,10 @@ const StudentFeeStatementPage: React.FC = () => {
     }
   };
 
-  // ─── Render ────────────────────────────────────────────────────────────
+  // ─── Compute the fee structure row BEFORE the return (avoids IIFE in JSX) ───
+  const summaryAny = summary as any;
+  const feeStructureRow =
+    summaryAny?.feeStructures?.[0] || summaryAny?.feeStructure || null;
 
   if (loading && !summary) {
     return (
@@ -142,7 +156,7 @@ const StudentFeeStatementPage: React.FC = () => {
         Student Fee Statement
       </Typography>
 
-      {/* ─── Search Section ────────────────────────────────────────────────── */}
+      {/* ─── Search Section ──────────────────────────────────────────── */}
       <Paper
         elevation={isMobile ? 0 : 3}
         sx={{
@@ -153,7 +167,7 @@ const StudentFeeStatementPage: React.FC = () => {
           alignItems: 'center',
           flexWrap: 'wrap',
           bgcolor: isMobile ? 'transparent' : 'background.paper',
-          border: isMobile ? 'none' : undefined
+          border: isMobile ? 'none' : undefined,
         }}
       >
         <Autocomplete
@@ -177,7 +191,7 @@ const StudentFeeStatementPage: React.FC = () => {
                     {searching ? <CircularProgress size={20} /> : null}
                     {params.InputProps.endAdornment}
                   </>
-                )
+                ),
               }}
             />
           )}
@@ -191,7 +205,9 @@ const StudentFeeStatementPage: React.FC = () => {
             onChange={(e) => setSelectedYear(e.target.value)}
           >
             {academicYears.map((year) => (
-              <MenuItem key={year} value={year}>{year}</MenuItem>
+              <MenuItem key={year} value={year}>
+                {year}
+              </MenuItem>
             ))}
           </Select>
         </FormControl>
@@ -205,9 +221,13 @@ const StudentFeeStatementPage: React.FC = () => {
         </Button>
       </Paper>
 
-      {fetchError && <Alert severity="error" sx={{ mb: 3 }}>{fetchError}</Alert>}
+      {fetchError && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {fetchError}
+        </Alert>
+      )}
 
-      {/* ─── Summary ──────────────────────────────────────────────────────── */}
+      {/* ─── Summary ──────────────────────────────────────────────── */}
       {summary && summary.studentFound ? (
         <Paper
           elevation={isMobile ? 0 : 3}
@@ -215,11 +235,20 @@ const StudentFeeStatementPage: React.FC = () => {
             p: isMobile ? 2 : 3,
             width: '100%',
             bgcolor: isMobile ? 'transparent' : 'background.paper',
-            border: isMobile ? 'none' : undefined
+            border: isMobile ? 'none' : undefined,
           }}
         >
           {/* Student Info */}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 1 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              mb: 3,
+              flexWrap: 'wrap',
+              gap: 1,
+            }}
+          >
             <Box>
               <Typography variant="h5" sx={{ fontSize: isMobile ? '1.2rem' : '1.5rem' }}>
                 {summary.studentDetails.student_name}
@@ -239,16 +268,20 @@ const StudentFeeStatementPage: React.FC = () => {
           </Box>
 
           {/* Fee Structure */}
-          {summary.feeStructure && (
+          {feeStructureRow && (
             <Box sx={{ mb: 3 }}>
               <Typography variant="h6" gutterBottom sx={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>
                 Fee Structure
               </Typography>
               <Typography variant="body2">
-                {summary.feeStructure.description || 'N/A'} | {summary.feeStructure.academic_year} | {summary.feeStructure.term}
+                {feeStructureRow.description || 'N/A'} | {feeStructureRow.academic_year} |{' '}
+                {feeStructureRow.term}
               </Typography>
               <Typography variant="body2">
-                Due Date: {summary.feeStructure.due_date ? new Date(summary.feeStructure.due_date).toLocaleDateString() : 'N/A'}
+                Due Date:{' '}
+                {feeStructureRow.due_date
+                  ? new Date(feeStructureRow.due_date).toLocaleDateString()
+                  : 'N/A'}
               </Typography>
               <TableContainer component={Paper} sx={{ mt: 2, overflowX: 'auto' }}>
                 <Table size="small">
@@ -259,15 +292,24 @@ const StudentFeeStatementPage: React.FC = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {summary.feeStructure.components?.map((comp, index) => (
+                    {feeStructureRow.components?.map((comp: any, index: number) => (
                       <TableRow key={index}>
-                        <TableCell>{comp.name}</TableCell>
-                        <TableCell align="right">{comp.amount.toFixed(2)}</TableCell>
+                        <TableCell>{comp.name || comp.component_name}</TableCell>
+                        <TableCell align="right">{safeToFixed(comp.amount)}</TableCell>
                       </TableRow>
                     ))}
                     <TableRow>
-                      <TableCell><strong>Total Expected</strong></TableCell>
-                      <TableCell align="right"><strong>{summary.feeStructure.total_expected_amount.toFixed(2)}</strong></TableCell>
+                      <TableCell>
+                        <strong>Total Expected</strong>
+                      </TableCell>
+                      <TableCell align="right">
+                        <strong>
+                          {safeToFixed(
+                            feeStructureRow.total_expected_amount ??
+                              (summary as any).totalExpected
+                          )}
+                        </strong>
+                      </TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>
@@ -294,13 +336,15 @@ const StudentFeeStatementPage: React.FC = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {summary.payments.map((p) => (
-                      <TableRow key={p.payment_id}>
-                        <TableCell>{new Date(p.payment_date).toLocaleDateString()}</TableCell>
-                        <TableCell>{p.receipt_number}</TableCell>
+                    {summary.payments.map((p: any) => (
+                      <TableRow key={p.payment_id || p.id}>
+                        <TableCell>
+                          {p.payment_date ? new Date(p.payment_date).toLocaleDateString() : '—'}
+                        </TableCell>
+                        <TableCell>{p.receipt_number || '—'}</TableCell>
                         <TableCell>{p.component_name || '—'}</TableCell>
-                        <TableCell>{p.payment_method}</TableCell>
-                        <TableCell align="right">{p.amount_paid.toFixed(2)}</TableCell>
+                        <TableCell>{p.payment_method || '—'}</TableCell>
+                        <TableCell align="right">{safeToFixed(p.amount_paid)}</TableCell>
                         <TableCell>
                           <Chip
                             label={p.status || 'active'}
@@ -311,15 +355,21 @@ const StudentFeeStatementPage: React.FC = () => {
                       </TableRow>
                     ))}
                     <TableRow>
-                      <TableCell colSpan={4}><strong>Total Paid</strong></TableCell>
-                      <TableCell align="right"><strong>{summary.totalPaid.toFixed(2)}</strong></TableCell>
-                      <TableCell></TableCell>
+                      <TableCell colSpan={4}>
+                        <strong>Total Paid</strong>
+                      </TableCell>
+                      <TableCell align="right">
+                        <strong>{safeToFixed(summary.totalPaid)}</strong>
+                      </TableCell>
+                      <TableCell />
                     </TableRow>
                   </TableBody>
                 </Table>
               </TableContainer>
             ) : (
-              <Typography variant="body2" color="textSecondary">No payments recorded.</Typography>
+              <Typography variant="body2" color="textSecondary">
+                No payments recorded.
+              </Typography>
             )}
           </Box>
 
@@ -329,12 +379,13 @@ const StudentFeeStatementPage: React.FC = () => {
               elevation={3}
               sx={{
                 p: 2,
-                bgcolor: summary.outstandingBalance > 0 ? 'error.light' : 'success.light',
-                width: isMobile ? '100%' : 'auto'
+                bgcolor: Number(summary.outstandingBalance) > 0 ? 'error.light' : 'success.light',
+                width: isMobile ? '100%' : 'auto',
               }}
             >
               <Typography variant="h6" sx={{ fontSize: isMobile ? '1rem' : '1.25rem' }}>
-                Outstanding Balance: FCFA {Math.max(0, summary.outstandingBalance).toFixed(2)}
+                Outstanding Balance: FCFA{' '}
+                {safeToFixed(Math.max(0, Number(summary.outstandingBalance) || 0))}
               </Typography>
             </Paper>
           </Box>
