@@ -14,13 +14,10 @@ const UPLOAD_BASE = path.join(__dirname, '..', 'uploads', 'questions');
 // ─── Multer storage: namespaced per school ──────────────
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        // verifyTeacher / verifyAdmin has already run — schoolId is attached
         const schoolId = req.teacher?.schoolId || req.user?.schoolId;
-
         if (!schoolId) {
             return cb(new Error('No school context available for file upload.'));
         }
-
         const dir = path.join(UPLOAD_BASE, `school_${schoolId}`);
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
@@ -47,14 +44,19 @@ const upload = multer({
     limits: { fileSize: 10 * 1024 * 1024 }
 });
 
-// --- TEACHER ROUTES ---
+// ─── TEACHER ROUTES ─────────────────────────────────────
+// ⚠️ Order matters: static paths MUST come before :id paths.
+
+// NEW: returns only the subjects assigned to the logged-in teacher
+router.get("/my-subjects", verifyTeacher, QuestionController.getMyAssignedSubjects);
+
+router.get("/my", verifyTeacher, QuestionController.viewMyQuestions);
 router.post("/", verifyTeacher, upload.single('questionPdf'), QuestionController.submitQuestion);
 router.put("/:id/file", verifyTeacher, upload.single('questionPdf'), QuestionController.replaceQuestionFile);
-router.get("/my", verifyTeacher, QuestionController.viewMyQuestions);
 router.get("/download/:id", verifyTeacher, QuestionController.downloadMyQuestion);
 router.delete("/:id", verifyTeacher, QuestionController.deleteQuestion);
 
-// --- ADMIN ROUTES ---
+// ─── ADMIN ROUTES ───────────────────────────────────────
 router.get("/", verifyAdmin, QuestionController.getAllQuestions);
 router.put("/:id/status", verifyAdmin, QuestionController.updateQuestionStatus);
 router.get("/admin/download/:id", verifyAdmin, QuestionController.downloadAnyQuestion);

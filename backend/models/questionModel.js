@@ -97,11 +97,33 @@ const QuestionModel = {
   isTeacherAssignedToSubject: async (teacher_id, subject_id, schoolId) => {
     const result = await db.tenantQuery(
       `SELECT 1 FROM teacher_assignments
-       WHERE teacher_id = $1 AND subject_id = $2 AND school_id = $3`,
+       WHERE teacher_id = $1 AND subject_id = $2 AND school_id = $3
+       LIMIT 1`,
       [teacher_id, subject_id, schoolId],
       schoolId
     );
     return result.rows.length > 0;
+  },
+
+  /**
+   * Returns every subject the teacher is assigned to teach (across all classes).
+   * Used to populate the "Upload Question" dropdown.
+   * `s.id::text` ensures the ID is returned as a string, matching the
+   * OptionItem type used on the frontend.
+   */
+  getMyAssignedSubjects: async (teacher_id, schoolId) => {
+    const result = await db.tenantQuery(
+      `SELECT DISTINCT
+         s.id::text AS id,
+         s.name     AS name
+       FROM teacher_assignments ta
+       JOIN subjects s ON ta.subject_id = s.id
+       WHERE ta.teacher_id = $1 AND ta.school_id = $2
+       ORDER BY s.name ASC`,
+      [teacher_id, schoolId],
+      schoolId
+    );
+    return result.rows;
   },
 };
 

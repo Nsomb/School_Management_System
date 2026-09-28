@@ -94,6 +94,8 @@ const MarkController = {
         return res.status(403).json({ success: false, error: "You are not authorized for this subject and class" });
       }
 
+      // ⚠️ Marks are shared across all teachers assigned to this subject+class.
+      // We pass teacher_id but the model no longer filters by it.
       const existingMarks = await MarkModel.getMarksByEvaluation(teacher_id, subjectId, classId, evaluationType, schoolId);
       const students = await MarkModel.getStudentsByClass(classId, schoolId);
 
@@ -156,7 +158,7 @@ const MarkController = {
   },
 
   // ═══════════════════════════════════════════════════════
-  // SUBMIT SINGLE EVALUATION — now supports exempt
+  // SUBMIT SINGLE EVALUATION — supports exempt
   // ═══════════════════════════════════════════════════════
   submitSingleEvaluation: async (req, res) => {
     try {
@@ -197,7 +199,6 @@ const MarkController = {
 
           const isExempt = mark.is_exempt === true;
 
-          // Non-exempt entries must have a valid score
           if (!isExempt && !validateScore(mark.score)) {
             errors.push(`Student ${mark.student_id}: Score must be between 0-20`);
             continue;
@@ -294,7 +295,7 @@ const MarkController = {
   },
 
   // ═══════════════════════════════════════════════════════
-  // SUBMIT TERM MARKS — now supports exempt
+  // SUBMIT TERM MARKS — supports exempt
   // ═══════════════════════════════════════════════════════
   submitTermMarks: async (req, res) => {
     try {
@@ -344,7 +345,6 @@ const MarkController = {
           const isExempt = mark.is_exempt === true;
 
           if (isExempt) {
-            // Save exempt for BOTH evaluations
             const r1 = await MarkModel.upsert({
               student_id: mark.student_id,
               subject_id, teacher_id,
@@ -365,7 +365,6 @@ const MarkController = {
             continue;
           }
 
-          // Not exempt — save each evaluation
           if (mark.evaluation1_score !== undefined && mark.evaluation1_score !== null) {
             if (!validateScore(mark.evaluation1_score)) {
               errors.push(`Student ${mark.student_id}: Eval 1 score must be 0-20`);
