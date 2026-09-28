@@ -5,6 +5,7 @@ const { calculateStudentAverage } = require("../utils/calculations");
 const db = require('../config/db');
 const { addClassHeader } = require('../utils/classPdfHeader');
 const { getSchoolConfig } = require('../services/schoolConfigCache');
+const { getCurrentAcademicYearAndTerm } = require('../utils/dateHelpers');
 
 const getEvaluationTypesForTerm = (term) => {
   const mapping = {
@@ -32,7 +33,6 @@ const generateClassStatisticsPDF = (statisticsData, metadata, school) => {
 
       const headerY = addClassHeader(doc, school, `Class Statistics - ${metadata.class_name}`);
       const tableTop = headerY + 20;
-
       const colPositions = [50, 230, 320, 410, 500];
 
       doc.rect(45, tableTop - 5, 505, 20).fill('#1a4b8c');
@@ -85,9 +85,7 @@ const generateClassStatisticsPDF = (statisticsData, metadata, school) => {
       });
 
       const summaryY = Math.min(yPosition + 30, 750);
-      doc.fontSize(12).font('Helvetica-Bold').fillColor('#000000')
-        .text('Summary', 50, summaryY);
-
+      doc.fontSize(12).font('Helvetica-Bold').fillColor('#000000').text('Summary', 50, summaryY);
       doc.fontSize(9).font('Helvetica').fillColor('#333333')
         .text(`Total Students: ${metadata.total_students}`, 50, summaryY + 20)
         .text(`Subjects Assessed: ${metadata.total_subjects}`, 250, summaryY + 20)
@@ -96,7 +94,6 @@ const generateClassStatisticsPDF = (statisticsData, metadata, school) => {
       const footerY = 750;
       doc.strokeColor('#cccccc').lineWidth(0.5)
         .moveTo(50, footerY).lineTo(545, footerY).stroke();
-
       doc.fontSize(8).font('Helvetica-Oblique').fillColor('#666666')
         .text(`Generated on ${new Date().toLocaleDateString()}`, 0, footerY + 10, { align: 'center' });
 
@@ -109,7 +106,29 @@ const generateClassStatisticsPDF = (statisticsData, metadata, school) => {
 
 // ==================== CONTROLLER ====================
 const ClassStatisticsController = {
-  calculateClassStatistics: async (className, term, academicYear, schoolId, teacherId = null) => {
+  // ─── NEW: returns backend-detected current academic year + term ───
+  getCurrentAcademicYear: async (req, res) => {
+    try {
+      const { academicYear, term } = getCurrentAcademicYearAndTerm(new Date());
+      return res.status(200).json({
+        success: true,
+        academic_year: academicYear,
+        term,
+      });
+    } catch (error) {
+      console.error("Error getting current academic year:", error);
+      res.status(500).json({ error: "Failed to get current academic year." });
+    }
+  },
+
+  calculateClassStatistics: async (
+    className,
+    term,
+    academicYear,
+    schoolId,
+    teacherId = null,
+    subjectIdFilter = null
+  ) => {
     try {
       const studentsInClass = await ClassStatisticsModel.getStudentsInClass(className, schoolId);
 
@@ -129,6 +148,10 @@ const ClassStatisticsController = {
         subjectsForClass = await ClassStatisticsModel.getSubjectsForTeacherAndClass(teacherId, className, schoolId);
       } else {
         subjectsForClass = await ClassStatisticsModel.getAllSubjectsForClass(className, schoolId);
+      }
+
+      if (subjectIdFilter) {
+        subjectsForClass = subjectsForClass.filter((s) => String(s.id) === String(subjectIdFilter));
       }
 
       if (subjectsForClass.length === 0) {
@@ -153,10 +176,7 @@ const ClassStatisticsController = {
       const structuredMarks = {};
       relevantMarks.forEach((mark) => {
         if (!structuredMarks[mark.student_id]) {
-          structuredMarks[mark.student_id] = {
-            student_name: mark.student_full_name,
-            subjects: {},
-          };
+          structuredMarks[mark.student_id] = { student_name: mark.student_full_name, subjects: {} };
         }
         if (!structuredMarks[mark.student_id].subjects[mark.subject_id]) {
           structuredMarks[mark.student_id].subjects[mark.subject_id] = {
@@ -177,9 +197,7 @@ const ClassStatisticsController = {
           if (subjectData && Object.keys(subjectData.evaluations).length > 0) {
             const presentEvalTypes = Object.keys(subjectData.evaluations);
             const studentAvg = calculateStudentAverage(
-              presentEvalTypes,
-              subjectData.evaluations,
-              subject.coefficient
+              presentEvalTypes, subjectData.evaluations, subject.coefficient
             );
             if (studentAvg !== null) {
               sumOfStudentAverages += studentAvg;
@@ -223,6 +241,7 @@ const ClassStatisticsController = {
     }
   },
 
+  // ─── ADMIN: unchanged ───
   getClassPerformanceStatistics: async (req, res) => {
     try {
       const { class_name, term, academic_year } = req.query;
@@ -242,6 +261,7 @@ const ClassStatisticsController = {
     }
   },
 
+  // ─── ADMIN: unchanged ───
   downloadClassStatistics: async (req, res) => {
     try {
       const { class_name, term, academic_year } = req.body;
@@ -270,9 +290,10 @@ const ClassStatisticsController = {
     }
   },
 
+  // ─── TEACHER: reads subject_id, respects teacher scope ───
   getTeacherClassStatistics: async (req, res) => {
     try {
-      const { class_name, term, academic_year } = req.query;
+      const { class_name, term, academic_year, subject_id } = req.query;
       const teacherId = req.teacher?.teacherId || req.user?.id;
       const schoolId = req.schoolId;
 
@@ -299,7 +320,12 @@ const ClassStatisticsController = {
       }
 
       const result = await ClassStatisticsController.calculateClassStatistics(
-        class_name, term || 'Year-End', academic_year || '2025/2026', schoolId, teacherId
+        class_name,
+        term || 'Year-End',
+        academic_year || '2025/2026',
+        schoolId,
+        teacherId,
+        subject_id || null
       );
 
       res.status(200).json({ message: "Class statistics retrieved successfully", ...result, teacher_id: teacherId });
@@ -309,9 +335,10 @@ const ClassStatisticsController = {
     }
   },
 
+  // ─── TEACHER download: reads subject_id ───
   downloadTeacherClassStatistics: async (req, res) => {
     try {
-      const { class_name, term, academic_year } = req.body;
+      const { class_name, term, academic_year, subject_id } = req.body;
       const teacherId = req.teacher?.teacherId || req.user?.id;
       const schoolId = req.schoolId;
 
@@ -340,7 +367,7 @@ const ClassStatisticsController = {
       }
 
       const result = await ClassStatisticsController.calculateClassStatistics(
-        class_name, term, academic_year, schoolId, teacherId
+        class_name, term, academic_year, schoolId, teacherId, subject_id || null
       );
 
       if (result.statistics.length === 0) {

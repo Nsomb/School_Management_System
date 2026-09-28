@@ -29,10 +29,22 @@ export interface StatisticsResponse {
   teacher_id?: number;
 }
 
+export interface CurrentAcademicYearResponse {
+  success: boolean;
+  academic_year: string;
+  term: string;
+}
+
 const API = '/api/class-statistics';
 
 export const classStatisticsApi = {
-  // ─── TEACHER ENDPOINTS ───────────────────────────────────
+  // ─── NEW: backend-detected current year + term ───
+  getCurrentAcademicYear: async (): Promise<CurrentAcademicYearResponse> => {
+    const response = await apiClient.get(`${API}/current-academic-year`);
+    return response.data;
+  },
+
+  // ─── TEACHER ───
   getTeacherSubjects: async (): Promise<any[]> => {
     const response = await apiClient.get(`${API}/teacher/subjects`);
     return response.data.subjects || [];
@@ -41,13 +53,15 @@ export const classStatisticsApi = {
   getTeacherStatistics: async (
     class_name: string,
     term?: string,
-    academic_year?: string
+    academic_year?: string,
+    subject_id?: number | null
   ): Promise<StatisticsResponse> => {
     const response = await apiClient.get(`${API}/teacher`, {
       params: {
         class_name,
         term: term || 'Year-End',
         academic_year: academic_year || '2025/2026',
+        subject_id: subject_id ?? undefined,
       },
     });
     return response.data;
@@ -56,17 +70,18 @@ export const classStatisticsApi = {
   downloadTeacherStatisticsPDF: async (
     class_name: string,
     term: string,
-    academic_year: string
+    academic_year: string,
+    subject_id?: number | null
   ): Promise<Blob> => {
     const response = await apiClient.post(
       `${API}/teacher/download`,
-      { class_name, term, academic_year },
+      { class_name, term, academic_year, subject_id: subject_id ?? undefined },
       { responseType: 'blob' }
     );
     return response.data;
   },
 
-  // ─── ADMIN ENDPOINTS ─────────────────────────────────────
+  // ─── ADMIN ───
   getAdminStatistics: async (
     class_name: string,
     term: string,
@@ -91,7 +106,7 @@ export const classStatisticsApi = {
     return response.data;
   },
 
-  // ─── SHARED ENDPOINTS ────────────────────────────────────
+  // ─── SHARED ───
   getTerms: async (): Promise<{ value: string; label: string }[]> => {
     const response = await apiClient.get(`${API}/terms`);
     return response.data.terms || [];
@@ -102,7 +117,6 @@ export const classStatisticsApi = {
     return response.data.years || [];
   },
 
-  // ─── HELPERS ─────────────────────────────────────────────
   getClasses: async (): Promise<any[]> => {
     const response = await apiClient.get('/api/classes');
     if (Array.isArray(response.data)) return response.data;
