@@ -24,6 +24,7 @@ const ClassReportModel = {
           sub.id AS subject_id,
           sub.name AS subject_name,
           m.score AS mark_score,
+          m.is_exempt AS is_exempt,
           m.submission_date
        FROM students s
        JOIN classes c ON s.class_id = c.id

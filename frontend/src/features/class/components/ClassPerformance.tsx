@@ -1,23 +1,8 @@
 import {
-  Box,
-  Typography,
-  CircularProgress,
-  Alert,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Button,
-  IconButton,
-  Tooltip,
+  Box, Typography, CircularProgress, Alert,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Paper, Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, Button, IconButton, Tooltip,
 } from '@mui/material';
 import DownloadIcon from '@mui/icons-material/Download';
 import EditIcon from '@mui/icons-material/Edit';
@@ -32,37 +17,85 @@ interface ClassPerformanceProps {
 }
 
 const SUBJECT_MAP: Record<string, string> = {
-  'Computer Science': 'CSC',
-  'Information and Communications Technology': 'ICT',
-  'Information & Communication Technology': 'ICT',
-  'Mathematics': 'MAT',
-  'English Language': 'ENG',
-  'French Language': 'FRE',
-  'Physical Education': 'PED',
-  'Physics': 'PHY',
-  'Chemistry': 'CHE',
-  'Biology': 'BIO',
-  'Geography': 'GEO',
-  'History': 'HIS',
-  'Economics': 'ECO',
-  'Citizenship': 'CIT',
-  'Logic': 'LOG',
-  'Philosophy': 'PHI',
-  'Literature in English': 'LIT',
-  'Geology': 'GEL',
-  'Further Mathematics': 'FMA',
+  'mathematics': 'MATH', 'maths': 'MATH', 'math': 'MATH',
+  'further mathematics': 'F.MATH', 'further maths': 'F.MATH',
+  'english language': 'ENG', 'english': 'ENG',
+  'french language': 'FRE', 'french': 'FRE',
+  'physics': 'PHY',
+  'chemistry': 'CHEM',
+  'biology': 'BIO',
+  'human biology': 'H.BIO',
+  'geography': 'GEO',
+  'history': 'HIS',
+  'economics': 'ECO',
+  'citizenship': 'CIT', 'citizenship education': 'CIT',
+  'philosophy': 'PHILO',
+  'computer science': 'CSC',
+  'information and communications technology': 'ICT',
+  'information & communication technology': 'ICT',
+  'ict': 'ICT',
+  'literature': 'LIT', 'literature in english': 'LIT',
+  'physical education': 'PE',
+  'geology': 'GEOL',
+  'logic': 'LOG',
+  'religious studies': 'R.S',
+  'science': 'SCI',
 };
 
-const formatSubjectName = (name: string): string => {
-  if (SUBJECT_MAP[name]) return SUBJECT_MAP[name];
-  return name.substring(0, 3).toUpperCase();
+const abbreviateSubject = (name: string): string => {
+  if (!name) return 'SUBJ';
+  const lower = name.trim().toLowerCase();
+  if (SUBJECT_MAP[lower]) return SUBJECT_MAP[lower];
+  const clean = name.trim().toUpperCase();
+  if (clean.length <= 5) return clean;
+  return clean.substring(0, 4) + '.';
 };
 
-const SUBJECT_COL_WIDTH = 26;
-const STUDENT_NAME_COL_WIDTH = 180;
-const TOTAL_COL_WIDTH = 60;
-const AVG_COL_WIDTH = 48;
-const RANK_COL_WIDTH = 40;
+const HORIZONTAL_HEADER_THRESHOLD = 10;
+
+const getSubjectColWidth = (subjectCount: number, useHorizontal: boolean): number => {
+  if (useHorizontal) {
+    if (subjectCount <= 5) return 54;
+    if (subjectCount <= 7) return 46;
+    if (subjectCount <= 9) return 40;
+    return 36;
+  }
+  if (subjectCount <= 12) return 22;
+  if (subjectCount <= 15) return 20;
+  if (subjectCount <= 18) return 17;
+  if (subjectCount <= 22) return 15;
+  return 13;
+};
+
+const STUDENT_NAME_COL_WIDTH = 170;
+const TOTAL_COL_WIDTH = 62;
+const AVG_COL_WIDTH = 52;
+const RANK_COL_WIDTH = 46;
+
+const GRID_CELL: React.CSSProperties = {
+  border: '1px solid #000',
+  padding: '4px 6px',
+  fontSize: '0.8rem',
+  lineHeight: 1.15,
+  color: '#000',
+};
+
+/**
+ * A single marksheet cell can be one of three shapes:
+ *   { score: number, isExempt: false }  → shows the mark
+ *   { score: null,   isExempt: true  }  → shows "EX"
+ *   null                                → shows blank
+ */
+type MarkCell = { score: number | null; isExempt: boolean } | null;
+
+const renderCell = (cell: MarkCell): { text: string; italic?: boolean; gray?: boolean } => {
+  if (!cell) return { text: '' };
+  if (cell.isExempt) return { text: 'EX', italic: true, gray: true };
+  if (cell.score !== null && cell.score !== undefined && !isNaN(cell.score)) {
+    return { text: String(cell.score) };
+  }
+  return { text: '' };
+};
 
 export function ClassPerformance({ className, term, academicYear }: ClassPerformanceProps) {
   const [evaluationType, setEvaluationType] = useState('EVA1');
@@ -80,23 +113,18 @@ export function ClassPerformance({ className, term, academicYear }: ClassPerform
     }
   };
 
-  const handleOpenDialog = () => {
-    setTempEvalType(evaluationType);
-    setDialogOpen(true);
-  };
+  const handleOpenDialog = () => { setTempEvalType(evaluationType); setDialogOpen(true); };
+  const handleLoadData = () => { setEvaluationType(tempEvalType); setDialogOpen(false); };
 
-  const handleLoadData = () => {
-    setEvaluationType(tempEvalType);
-    setDialogOpen(false);
-  };
+  const subjectCount = reportData?.subjects.length || 0;
+  const useHorizontalHeaders = subjectCount <= HORIZONTAL_HEADER_THRESHOLD;
+  const subjectColWidth = getSubjectColWidth(subjectCount, useHorizontalHeaders);
+  const headerHeight = useHorizontalHeaders ? 46 : 115;
 
-  const totalTableWidth = reportData
-    ? STUDENT_NAME_COL_WIDTH +
-      (reportData.subjects.length * SUBJECT_COL_WIDTH) +
-      TOTAL_COL_WIDTH +
-      AVG_COL_WIDTH +
-      RANK_COL_WIDTH
-    : 'auto';
+  const totalTableWidth =
+    STUDENT_NAME_COL_WIDTH +
+    subjectCount * subjectColWidth +
+    TOTAL_COL_WIDTH + AVG_COL_WIDTH + RANK_COL_WIDTH;
 
   return (
     <Box sx={{ maxWidth: '100%', overflow: 'hidden' }}>
@@ -112,15 +140,12 @@ export function ClassPerformance({ className, term, academicYear }: ClassPerform
 
         <Box display="flex" gap={0.5}>
           <Button
-            variant="outlined"
-            size="small"
-            startIcon={<EditIcon />}
+            variant="outlined" size="small" startIcon={<EditIcon />}
             onClick={handleOpenDialog}
             sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
           >
             Eval
           </Button>
-
           <Tooltip title="Download PDF">
             <span>
               <IconButton onClick={handleDownloadPDF} disabled={loading || !reportData} size="small">
@@ -148,12 +173,14 @@ export function ClassPerformance({ className, term, academicYear }: ClassPerform
       {!loading && !error && reportData && reportData.students.length > 0 && (
         <TableContainer
           component={Paper}
-          variant="outlined"
+          elevation={0}
           sx={{
             overflowX: 'auto',
             maxWidth: '100%',
             WebkitOverflowScrolling: 'touch',
             display: 'inline-block',
+            border: '1px solid #000',
+            borderRadius: 0,
           }}
         >
           <Table
@@ -164,30 +191,28 @@ export function ClassPerformance({ className, term, academicYear }: ClassPerform
               width: `${totalTableWidth}px`,
               minWidth: `${totalTableWidth}px`,
               maxWidth: `${totalTableWidth}px`,
-              '& .MuiTableCell-root': { padding: 0 },
+              '& .MuiTableCell-root': { padding: 0, border: '1px solid #000' },
             }}
           >
             <TableHead>
-              <TableRow sx={{ height: 105 }}>
+              <TableRow sx={{ height: headerHeight }}>
                 <TableCell
                   sx={{
+                    ...GRID_CELL,
                     width: STUDENT_NAME_COL_WIDTH,
                     minWidth: STUDENT_NAME_COL_WIDTH,
                     maxWidth: STUDENT_NAME_COL_WIDTH,
                     position: 'sticky',
                     left: 0,
-                    backgroundColor: '#f5f5f5',
+                    backgroundColor: '#f2f2f2',
                     zIndex: 3,
-                    borderRight: '2px solid #333',
-                    borderBottom: '2px solid #333',
-                    fontWeight: 'bold',
-                    verticalAlign: 'bottom',
-                    px: 1, py: 0.5,
-                    fontSize: '0.85rem',
-                    lineHeight: 1.15,
+                    fontWeight: 700,
+                    verticalAlign: 'middle',
+                    px: 1,
+                    fontSize: '0.82rem',
                   }}
                 >
-                  Student
+                  STUDENT NAME
                 </TableCell>
 
                 {reportData.subjects.map((subject) => (
@@ -195,199 +220,146 @@ export function ClassPerformance({ className, term, academicYear }: ClassPerform
                     key={subject.id}
                     align="center"
                     sx={{
-                      width: SUBJECT_COL_WIDTH,
-                      minWidth: SUBJECT_COL_WIDTH,
-                      maxWidth: SUBJECT_COL_WIDTH,
-                      p: 0, position: 'relative',
-                      borderLeft: '1px solid #ccc',
-                      borderRight: '1px solid #ccc',
-                      borderBottom: '2px solid #333',
-                      verticalAlign: 'bottom',
-                      backgroundColor: '#f5f5f5',
+                      ...GRID_CELL,
+                      width: subjectColWidth,
+                      minWidth: subjectColWidth,
+                      maxWidth: subjectColWidth,
+                      verticalAlign: 'middle',
+                      backgroundColor: '#f2f2f2',
+                      p: 0.25,
+                      position: 'relative',
                     }}
                   >
                     <Tooltip title={subject.name} arrow enterTouchDelay={0}>
-                      <Box
-                        sx={{
-                          writingMode: 'vertical-rl',
-                          transform: 'rotate(180deg)',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold',
-                          lineHeight: 1,
-                          whiteSpace: 'nowrap',
-                          display: 'inline-block',
-                          height: '85px',
-                          py: 0.5,
-                          userSelect: 'none',
-                        }}
-                      >
-                        {formatSubjectName(subject.name)}
-                      </Box>
+                      {useHorizontalHeaders ? (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1.1 }}>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700 }}>
+                            {abbreviateSubject(subject.name)}
+                          </span>
+                          {subject.coefficient != null && (
+                            <span style={{ fontSize: '0.6rem', color: '#444' }}>
+                              ({subject.coefficient})
+                            </span>
+                          )}
+                        </Box>
+                      ) : (
+                        <Box
+                          sx={{
+                            writingMode: 'vertical-rl',
+                            transform: 'rotate(180deg)',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            lineHeight: 1,
+                            whiteSpace: 'nowrap',
+                            display: 'inline-block',
+                            height: '100px',
+                            py: 0.5,
+                            userSelect: 'none',
+                          }}
+                        >
+                          {abbreviateSubject(subject.name)}
+                          {subject.coefficient != null && (
+                            <span style={{ fontWeight: 400, color: '#444' }}>
+                              {' '}({subject.coefficient})
+                            </span>
+                          )}
+                        </Box>
+                      )}
                     </Tooltip>
                   </TableCell>
                 ))}
 
-                {/* TOTAL */}
-                <TableCell
-                  align="center"
-                  sx={{
-                    width: TOTAL_COL_WIDTH,
-                    minWidth: TOTAL_COL_WIDTH,
-                    maxWidth: TOTAL_COL_WIDTH,
-                    borderLeft: '2px solid #333',
-                    borderBottom: '2px solid #333',
-                    fontWeight: 'bold',
-                    verticalAlign: 'bottom',
-                    backgroundColor: '#e8eef7',
-                    fontSize: '0.8rem',
-                    px: 0.5, py: 0.5,
-                  }}
-                >
+                <TableCell align="center" sx={{
+                  ...GRID_CELL, width: TOTAL_COL_WIDTH, minWidth: TOTAL_COL_WIDTH,
+                  maxWidth: TOTAL_COL_WIDTH, backgroundColor: '#e8eef7',
+                  fontWeight: 700, fontSize: '0.75rem', verticalAlign: 'middle',
+                }}>
                   TOTAL
                 </TableCell>
-
-                {/* AVG */}
-                <TableCell
-                  align="center"
-                  sx={{
-                    width: AVG_COL_WIDTH,
-                    minWidth: AVG_COL_WIDTH,
-                    maxWidth: AVG_COL_WIDTH,
-                    borderLeft: '1px solid #ccc',
-                    borderRight: '1px solid #ccc',
-                    borderBottom: '2px solid #333',
-                    fontWeight: 'bold',
-                    verticalAlign: 'bottom',
-                    backgroundColor: '#e8eef7',
-                    fontSize: '0.8rem',
-                    px: 0.5, py: 0.5,
-                  }}
-                >
+                <TableCell align="center" sx={{
+                  ...GRID_CELL, width: AVG_COL_WIDTH, minWidth: AVG_COL_WIDTH,
+                  maxWidth: AVG_COL_WIDTH, backgroundColor: '#e8eef7',
+                  fontWeight: 700, fontSize: '0.75rem', verticalAlign: 'middle',
+                }}>
                   AVG
                 </TableCell>
-
-                {/* RANK */}
-                <TableCell
-                  align="center"
-                  sx={{
-                    width: RANK_COL_WIDTH,
-                    minWidth: RANK_COL_WIDTH,
-                    maxWidth: RANK_COL_WIDTH,
-                    borderLeft: '1px solid #ccc',
-                    borderBottom: '2px solid #333',
-                    fontWeight: 'bold',
-                    verticalAlign: 'bottom',
-                    backgroundColor: '#e8eef7',
-                    fontSize: '0.8rem',
-                    px: 0.5, py: 0.5,
-                  }}
-                >
+                <TableCell align="center" sx={{
+                  ...GRID_CELL, width: RANK_COL_WIDTH, minWidth: RANK_COL_WIDTH,
+                  maxWidth: RANK_COL_WIDTH, backgroundColor: '#e8eef7',
+                  fontWeight: 700, fontSize: '0.75rem', verticalAlign: 'middle',
+                }}>
                   RANK
                 </TableCell>
               </TableRow>
             </TableHead>
+
             <TableBody>
-              {reportData.students.map((student, rowIndex) => (
+              {reportData.students.map((student) => (
                 <TableRow key={student.student_id}>
                   <TableCell
                     sx={{
-                      fontWeight: 'medium',
+                      ...GRID_CELL,
+                      fontWeight: 500,
                       position: 'sticky',
                       left: 0,
-                      backgroundColor: 'background.paper',
+                      backgroundColor: '#fff',
                       zIndex: 1,
-                      borderRight: '2px solid #333',
-                      borderBottom: '1px solid #eee',
                       width: STUDENT_NAME_COL_WIDTH,
                       minWidth: STUDENT_NAME_COL_WIDTH,
                       maxWidth: STUDENT_NAME_COL_WIDTH,
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
-                      px: 1, py: 0.5,
-                      fontSize: '0.8rem',
-                      lineHeight: 1.15,
+                      px: 1,
                     }}
                     title={student.student_name}
                   >
                     {student.student_name}
                   </TableCell>
 
-                  {reportData.subjects.map((subject) => (
-                    <TableCell
-                      key={subject.id}
-                      align="center"
-                      sx={{
-                        width: SUBJECT_COL_WIDTH,
-                        minWidth: SUBJECT_COL_WIDTH,
-                        maxWidth: SUBJECT_COL_WIDTH,
-                        p: 0,
-                        fontSize: '0.75rem',
-                        fontWeight: '500',
-                        borderLeft: '1px solid #eee',
-                        borderRight: '1px solid #eee',
-                        borderBottom: '1px solid #eee',
-                        backgroundColor: rowIndex % 2 === 0 ? '#fafafa' : 'inherit',
-                        lineHeight: 1.1,
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {student.marks[subject.name] ?? '-'}
-                    </TableCell>
-                  ))}
+                  {reportData.subjects.map((subject) => {
+                    const cell = (student.marks as any)[subject.name] as MarkCell;
+                    const { text, italic, gray } = renderCell(cell);
+                    return (
+                      <TableCell
+                        key={subject.id}
+                        align="center"
+                        sx={{
+                          ...GRID_CELL,
+                          width: subjectColWidth,
+                          minWidth: subjectColWidth,
+                          maxWidth: subjectColWidth,
+                          fontSize: '0.78rem',
+                          fontWeight: italic ? 400 : 500,
+                          fontStyle: italic ? 'italic' : 'normal',
+                          color: gray ? '#666' : '#000',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {text}
+                      </TableCell>
+                    );
+                  })}
 
-                  {/* TOTAL */}
-                  <TableCell
-                    align="center"
-                    sx={{
-                      width: TOTAL_COL_WIDTH,
-                      minWidth: TOTAL_COL_WIDTH,
-                      maxWidth: TOTAL_COL_WIDTH,
-                      fontSize: '0.8rem',
-                      fontWeight: 'bold',
-                      borderLeft: '2px solid #333',
-                      borderBottom: '1px solid #eee',
-                      backgroundColor: rowIndex % 2 === 0 ? '#eef3fb' : '#e4ecf7',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
+                  <TableCell align="center" sx={{
+                    ...GRID_CELL, width: TOTAL_COL_WIDTH, minWidth: TOTAL_COL_WIDTH,
+                    maxWidth: TOTAL_COL_WIDTH, backgroundColor: '#eef3fb',
+                    fontWeight: 700, fontSize: '0.8rem',
+                  }}>
                     {student.total != null ? Number(student.total).toFixed(2) : '-'}
                   </TableCell>
-
-                  {/* AVG */}
-                  <TableCell
-                    align="center"
-                    sx={{
-                      width: AVG_COL_WIDTH,
-                      minWidth: AVG_COL_WIDTH,
-                      maxWidth: AVG_COL_WIDTH,
-                      fontSize: '0.8rem',
-                      fontWeight: 'bold',
-                      borderLeft: '1px solid #eee',
-                      borderRight: '1px solid #eee',
-                      borderBottom: '1px solid #eee',
-                      backgroundColor: rowIndex % 2 === 0 ? '#eef3fb' : '#e4ecf7',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
+                  <TableCell align="center" sx={{
+                    ...GRID_CELL, width: AVG_COL_WIDTH, minWidth: AVG_COL_WIDTH,
+                    maxWidth: AVG_COL_WIDTH, backgroundColor: '#eef3fb',
+                    fontWeight: 700, fontSize: '0.8rem',
+                  }}>
                     {student.avg != null ? Number(student.avg).toFixed(2) : '-'}
                   </TableCell>
-
-                  {/* RANK */}
-                  <TableCell
-                    align="center"
-                    sx={{
-                      width: RANK_COL_WIDTH,
-                      minWidth: RANK_COL_WIDTH,
-                      maxWidth: RANK_COL_WIDTH,
-                      fontSize: '0.8rem',
-                      fontWeight: 'bold',
-                      borderLeft: '1px solid #eee',
-                      borderBottom: '1px solid #eee',
-                      backgroundColor: rowIndex % 2 === 0 ? '#eef3fb' : '#e4ecf7',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
+                  <TableCell align="center" sx={{
+                    ...GRID_CELL, width: RANK_COL_WIDTH, minWidth: RANK_COL_WIDTH,
+                    maxWidth: RANK_COL_WIDTH, backgroundColor: '#eef3fb',
+                    fontWeight: 700, fontSize: '0.8rem',
+                  }}>
                     {student.rank ?? '-'}
                   </TableCell>
                 </TableRow>
@@ -405,13 +377,8 @@ export function ClassPerformance({ className, term, academicYear }: ClassPerform
         <DialogTitle>Select Evaluation</DialogTitle>
         <DialogContent>
           <TextField
-            autoFocus
-            margin="dense"
-            label="Evaluation Type"
-            fullWidth
-            variant="outlined"
-            size="small"
-            value={tempEvalType}
+            autoFocus margin="dense" label="Evaluation Type" fullWidth
+            variant="outlined" size="small" value={tempEvalType}
             onChange={(e) => setTempEvalType(e.target.value)}
             helperText="e.g., EVA1, EVA2, Exam"
           />
